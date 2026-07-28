@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import * as d3 from 'd3'
 import type { NewsItem } from '../types'
 
@@ -8,11 +8,6 @@ interface GlobeProps {
   newsItems: NewsItem[]
   onNewsHover?: (item: NewsItem | null, x: number, y: number) => void
   onNewsClick?: (item: NewsItem | null) => void
-}
-
-interface LandPoint {
-  lng: number
-  lat: number
 }
 
 export default function Globe({
@@ -62,18 +57,6 @@ export default function Globe({
 
     let land: any = null
     let countries: any = null
-    const landPoints: LandPoint[] = []
-
-    // Minimal cloud positions (just a few sparse clouds)
-    const clouds: { lng: number; lat: number; r: number; alpha: number }[] = []
-    for (let i = 0; i < 12; i++) {
-      clouds.push({
-        lng: (Math.random() - 0.5) * 360,
-        lat: (Math.random() - 0.5) * 140,
-        r: Math.random() * 8 + 5,
-        alpha: Math.random() * 0.15 + 0.05,
-      })
-    }
 
     const render = () => {
       ctx.clearRect(0, 0, w, h)
@@ -83,32 +66,19 @@ export default function Globe({
       const cx = w / 2
       const cy = h / 2
 
-      // Ocean sphere - solid opaque gradient (not transparent)
+      // Ocean sphere - solid opaque realistic ocean
       const oceanGrad = ctx.createRadialGradient(
-        cx - scale * 0.3, cy - scale * 0.3, scale * 0.1,
+        cx - scale * 0.35, cy - scale * 0.35, scale * 0.05,
         cx, cy, scale
       )
-      oceanGrad.addColorStop(0, '#1e5a8a')
-      oceanGrad.addColorStop(0.5, '#0d3a6b')
-      oceanGrad.addColorStop(1, '#061f3a')
+      oceanGrad.addColorStop(0, '#2a6ba8')
+      oceanGrad.addColorStop(0.4, '#1a4d80')
+      oceanGrad.addColorStop(0.75, '#0d3060')
+      oceanGrad.addColorStop(1, '#051a3a')
       ctx.beginPath()
       ctx.arc(cx, cy, scale, 0, 2 * Math.PI)
       ctx.fillStyle = oceanGrad
       ctx.fill()
-
-      // Subtle ocean grid (graticule)
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(cx, cy, scale, 0, 2 * Math.PI)
-      ctx.clip()
-
-      const graticule = d3.geoGraticule()
-      ctx.beginPath()
-      path(graticule())
-      ctx.strokeStyle = 'rgba(100, 160, 220, 0.08)'
-      ctx.lineWidth = 0.5
-      ctx.stroke()
-      ctx.restore()
 
       if (land) {
         ctx.save()
@@ -116,80 +86,68 @@ export default function Globe({
         ctx.arc(cx, cy, scale, 0, 2 * Math.PI)
         ctx.clip()
 
-        // Land - solid opaque fill
+        // Land - solid opaque fill, realistic green/brown
         land.features.forEach((feature: any) => {
           ctx.beginPath()
           path(feature)
-          ctx.fillStyle = '#2d5a3d'
+          ctx.fillStyle = '#3a6b4a'
           ctx.fill()
         })
 
-        // Land texture overlay
+        // Land shading - darker on one side for 3D effect
         land.features.forEach((feature: any) => {
           ctx.beginPath()
           path(feature)
-          const landGrad = ctx.createLinearGradient(cx - scale, cy - scale, cx + scale, cy + scale)
-          landGrad.addColorStop(0, 'rgba(45, 90, 60, 0.6)')
-          landGrad.addColorStop(1, 'rgba(20, 50, 30, 0.3)')
-          ctx.fillStyle = landGrad
+          const shadeGrad = ctx.createLinearGradient(cx - scale, cy - scale, cx + scale * 0.5, cy + scale * 0.5)
+          shadeGrad.addColorStop(0, 'rgba(50, 100, 65, 0.5)')
+          shadeGrad.addColorStop(0.5, 'rgba(30, 70, 45, 0.2)')
+          shadeGrad.addColorStop(1, 'rgba(10, 40, 25, 0.4)')
+          ctx.fillStyle = shadeGrad
           ctx.fill()
         })
 
-        // Country borders
+        // Country borders - thin, subtle
         if (countries) {
           ctx.beginPath()
           countries.features.forEach((feature: any) => {
             path(feature)
           })
-          ctx.strokeStyle = 'rgba(140, 190, 160, 0.4)'
-          ctx.lineWidth = Math.max(0.4, 0.5 * zoom)
+          ctx.strokeStyle = 'rgba(120, 170, 140, 0.25)'
+          ctx.lineWidth = Math.max(0.3, 0.4 * zoom)
           ctx.stroke()
         }
 
-        // Land outline
+        // Coastline outline
         ctx.beginPath()
         land.features.forEach((feature: any) => {
           path(feature)
         })
-        ctx.strokeStyle = 'rgba(160, 210, 180, 0.5)'
-        ctx.lineWidth = Math.max(0.5, 0.8 * zoom)
+        ctx.strokeStyle = 'rgba(140, 190, 160, 0.4)'
+        ctx.lineWidth = Math.max(0.4, 0.6 * zoom)
         ctx.stroke()
-
-        // Minimal clouds - only a few, subtle
-        clouds.forEach(cloud => {
-          const pos = projection([cloud.lng, cloud.lat])
-          if (!pos) return
-          const dist = Math.hypot(pos[0] - cx, pos[1] - cy)
-          if (dist > scale) return
-          const edgeFade = Math.max(0, 1 - dist / scale)
-          ctx.beginPath()
-          ctx.arc(pos[0], pos[1], cloud.r * zoom, 0, 2 * Math.PI)
-          ctx.fillStyle = `rgba(255, 255, 255, ${cloud.alpha * edgeFade})`
-          ctx.fill()
-        })
 
         ctx.restore()
       }
 
-      // Atmospheric glow ring (outside the globe)
-      const glowGrad = ctx.createRadialGradient(cx, cy, scale * 0.95, cx, cy, scale * 1.12)
-      glowGrad.addColorStop(0, 'rgba(80, 160, 255, 0.25)')
-      glowGrad.addColorStop(0.5, 'rgba(60, 130, 220, 0.08)')
+      // Atmospheric glow ring
+      const glowGrad = ctx.createRadialGradient(cx, cy, scale * 0.96, cx, cy, scale * 1.1)
+      glowGrad.addColorStop(0, 'rgba(80, 160, 255, 0.2)')
+      glowGrad.addColorStop(0.5, 'rgba(60, 130, 220, 0.06)')
       glowGrad.addColorStop(1, 'rgba(40, 100, 200, 0)')
       ctx.beginPath()
-      ctx.arc(cx, cy, scale * 1.12, 0, 2 * Math.PI)
+      ctx.arc(cx, cy, scale * 1.1, 0, 2 * Math.PI)
       ctx.fillStyle = glowGrad
       ctx.fill()
 
-      // News dots - visible on all sides, not transparent
+      // News dots - ONLY on the visible near side
       const items = newsRef.current
       const hovered = hoveredRef.current
 
       items.forEach(item => {
         const pos = projection([item.lng, item.lat])
-        if (!pos) return
+        if (!pos) return // far side returns null - hidden by globe
         const dist = Math.hypot(pos[0] - cx, pos[1] - cy)
-        if (dist > scale) return // only show dots on the visible hemisphere
+        if (dist > scale) return // outside globe circle - hidden
 
         const isHovered = hovered && hovered.url === item.url
         const dotRadius = Math.max(2.5, 2.5 * zoom)
@@ -207,13 +165,12 @@ export default function Globe({
         ctx.fillStyle = haloGrad
         ctx.fill()
 
-        // Solid dot (opaque, not transparent)
+        // Solid opaque dot
         ctx.beginPath()
         ctx.arc(pos[0], pos[1], radius, 0, 2 * Math.PI)
         ctx.fillStyle = color
         ctx.fill()
 
-        // White border on hover
         if (isHovered) {
           ctx.beginPath()
           ctx.arc(pos[0], pos[1], radius + 2, 0, 2 * Math.PI)
@@ -234,57 +191,6 @@ export default function Globe({
         if (!landRes.ok || !countriesRes.ok) throw new Error('Failed to load map data')
         land = await landRes.json()
         countries = await countriesRes.json()
-
-        // Generate land points for texture
-        const pointInPolygon = (point: [number, number], polygon: number[][]) => {
-          const [x, y] = point
-          let inside = false
-          for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-            const [xi, yi] = polygon[i]
-            const [xj, yj] = polygon[j]
-            if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-              inside = !inside
-            }
-          }
-          return inside
-        }
-
-        const pointInFeature = (point: [number, number], feature: any) => {
-          const geom = feature.geometry
-          if (geom.type === 'Polygon') {
-            if (!pointInPolygon(point, geom.coordinates[0])) return false
-            for (let i = 1; i < geom.coordinates.length; i++) {
-              if (pointInPolygon(point, geom.coordinates[i])) return false
-            }
-            return true
-          } else if (geom.type === 'MultiPolygon') {
-            for (const poly of geom.coordinates) {
-              if (pointInPolygon(point, poly[0])) {
-                let inHole = false
-                for (let i = 1; i < poly.length; i++) {
-                  if (pointInPolygon(point, poly[i])) { inHole = true; break }
-                }
-                if (!inHole) return true
-              }
-            }
-            return false
-          }
-          return false
-        }
-
-        land.features.forEach((feature: any) => {
-          const bounds = d3.geoBounds(feature)
-          const [[minLng, minLat], [maxLng, maxLat]] = bounds
-          const step = 1.2
-          for (let lng = minLng; lng <= maxLng; lng += step) {
-            for (let lat = minLat; lat <= maxLat; lat += step) {
-              if (pointInFeature([lng, lat], feature)) {
-                landPoints.push({ lng, lat })
-              }
-            }
-          }
-        })
-
         render()
         setLoading(false)
       } catch {
@@ -306,11 +212,13 @@ export default function Globe({
       }
     })
 
-    // Mouse drag
+    // --- Mouse: only rotate on click+drag, NOT on hover ---
+    let isDragging = false
     let dragStart = { x: 0, y: 0 }
     let rotStart = [0, 0, 0]
 
     const handleMouseDown = (e: MouseEvent) => {
+      isDragging = true
       autoRotate = false
       dragStart = { x: e.clientX, y: e.clientY }
       rotStart = [...rotation]
@@ -318,7 +226,8 @@ export default function Globe({
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (rotStart) {
+      // Only rotate if mouse button is held down (clicking and dragging)
+      if (isDragging) {
         const dx = e.clientX - dragStart.x
         const dy = e.clientY - dragStart.y
         rotation[0] = rotStart[0] + dx * 0.4
@@ -327,7 +236,7 @@ export default function Globe({
         render()
       }
 
-      // Hover detection
+      // Hover detection (separate from rotation)
       const rect = canvas.getBoundingClientRect()
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top
@@ -356,9 +265,11 @@ export default function Globe({
     }
 
     const handleMouseUp = () => {
-      rotStart = [0, 0, 0] as any
-      canvas.style.cursor = 'grab'
-      setTimeout(() => { autoRotate = true }, 3000)
+      if (isDragging) {
+        isDragging = false
+        canvas.style.cursor = 'grab'
+        setTimeout(() => { autoRotate = true }, 3000)
+      }
     }
 
     const handleWheel = (e: WheelEvent) => {
@@ -370,29 +281,32 @@ export default function Globe({
     }
 
     const handleClick = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const cx = w / 2
-      const cy = h / 2
-      const scale = projection.scale()
-      const zoom = scale / baseScale
-      for (const item of newsRef.current) {
-        const pos = projection([item.lng, item.lat])
-        if (!pos) continue
-        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-        const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-        const threshold = Math.max(8, 5 * zoom)
-        if (dist < threshold) {
-          onClickRef.current?.(item)
-          return
+      if (!isDragging) {
+        const rect = canvas.getBoundingClientRect()
+        const mx = e.clientX - rect.left
+        const my = e.clientY - rect.top
+        const cx = w / 2
+        const cy = h / 2
+        const scale = projection.scale()
+        const zoom = scale / baseScale
+        for (const item of newsRef.current) {
+          const pos = projection([item.lng, item.lat])
+          if (!pos) continue
+          if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
+          const dist = Math.hypot(pos[0] - mx, pos[1] - my)
+          const threshold = Math.max(8, 5 * zoom)
+          if (dist < threshold) {
+            onClickRef.current?.(item)
+            return
+          }
         }
       }
     }
 
-    // Touch support for mobile
+    // --- Touch support ---
     let touchStart = { x: 0, y: 0 }
     let touchRotStart = [0, 0, 0]
+    let isTouchDragging = false
     let pinchStartDist = 0
     let pinchStartScale = 0
 
@@ -400,9 +314,11 @@ export default function Globe({
       e.preventDefault()
       autoRotate = false
       if (e.touches.length === 1) {
+        isTouchDragging = true
         touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }
         touchRotStart = [...rotation]
       } else if (e.touches.length === 2) {
+        isTouchDragging = false
         const dx = e.touches[0].clientX - e.touches[1].clientX
         const dy = e.touches[0].clientY - e.touches[1].clientY
         pinchStartDist = Math.hypot(dx, dy)
@@ -412,7 +328,7 @@ export default function Globe({
 
     const handleTouchMove = (e: TouchEvent) => {
       e.preventDefault()
-      if (e.touches.length === 1) {
+      if (e.touches.length === 1 && isTouchDragging) {
         const dx = e.touches[0].clientX - touchStart.x
         const dy = e.touches[0].clientY - touchStart.y
         rotation[0] = touchRotStart[0] + dx * 0.4
@@ -433,52 +349,47 @@ export default function Globe({
     const handleTouchEnd = (e: TouchEvent) => {
       e.preventDefault()
       if (e.touches.length === 0) {
-        // Check for tap (short touch with minimal movement)
-        setTimeout(() => { autoRotate = true }, 3000)
-      }
-    }
-
-    const handleTouchClick = (e: TouchEvent) => {
-      if (e.changedTouches.length !== 1) return
-      const rect = canvas.getBoundingClientRect()
-      const mx = e.changedTouches[0].clientX - rect.left
-      const my = e.changedTouches[0].clientY - rect.top
-      const cx = w / 2
-      const cy = h / 2
-      const scale = projection.scale()
-      const zoom = scale / baseScale
-      for (const item of newsRef.current) {
-        const pos = projection([item.lng, item.lat])
-        if (!pos) continue
-        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-        const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-        const threshold = Math.max(12, 8 * zoom)
-        if (dist < threshold) {
-          onClickRef.current?.(item)
-          return
+        // Tap detection for clicking dots
+        if (!isTouchDragging || (Math.abs(e.changedTouches[0]?.clientX - touchStart.x) < 10 && Math.abs(e.changedTouches[0]?.clientY - touchStart.y) < 10)) {
+          if (e.changedTouches.length === 1) {
+            const rect = canvas.getBoundingClientRect()
+            const mx = e.changedTouches[0].clientX - rect.left
+            const my = e.changedTouches[0].clientY - rect.top
+            const cx = w / 2
+            const cy = h / 2
+            const scale = projection.scale()
+            const zoom = scale / baseScale
+            for (const item of newsRef.current) {
+              const pos = projection([item.lng, item.lat])
+              if (!pos) continue
+              if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
+              const dist = Math.hypot(pos[0] - mx, pos[1] - my)
+              const threshold = Math.max(12, 8 * zoom)
+              if (dist < threshold) {
+                onClickRef.current?.(item)
+                break
+              }
+            }
+          }
         }
+        isTouchDragging = false
+        setTimeout(() => { autoRotate = true }, 3000)
       }
     }
 
     canvas.addEventListener('mousedown', handleMouseDown)
     canvas.addEventListener('mousemove', handleMouseMove)
-    canvas.addEventListener('mouseup', handleMouseUp)
-    canvas.addEventListener('mouseleave', handleMouseUp)
+    window.addEventListener('mouseup', handleMouseUp)
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     canvas.addEventListener('click', handleClick)
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false })
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false })
     canvas.addEventListener('touchend', handleTouchEnd, { passive: false })
-    canvas.addEventListener('touchend', handleTouchClick, { passive: false })
 
     loadData()
 
-    // Re-render when news changes
-    const newsInterval = setInterval(() => {
-      render()
-    }, 2000)
+    const newsInterval = setInterval(render, 2000)
 
-    // Re-render on resize
     const handleResize = () => {
       const newIsMobile = window.innerWidth < 768
       const newW = Math.min(width, window.innerWidth - (newIsMobile ? 0 : 24))
@@ -500,14 +411,12 @@ export default function Globe({
       clearInterval(newsInterval)
       canvas.removeEventListener('mousedown', handleMouseDown)
       canvas.removeEventListener('mousemove', handleMouseMove)
-      canvas.removeEventListener('mouseup', handleMouseUp)
-      canvas.removeEventListener('mouseleave', handleMouseUp)
+      window.removeEventListener('mouseup', handleMouseUp)
       canvas.removeEventListener('wheel', handleWheel)
       canvas.removeEventListener('click', handleClick)
       canvas.removeEventListener('touchstart', handleTouchStart)
       canvas.removeEventListener('touchmove', handleTouchMove)
       canvas.removeEventListener('touchend', handleTouchEnd)
-      canvas.removeEventListener('touchend', handleTouchClick)
       window.removeEventListener('resize', handleResize)
     }
   }, [width, height])
@@ -536,7 +445,7 @@ export default function Globe({
         </div>
       )}
       <div className="absolute bottom-4 left-4 text-xs text-neutral-400 px-3 py-1.5 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-neutral-700/50 pointer-events-none">
-        Drag to rotate • Scroll to zoom • Click dots for details
+        Click and drag to rotate • Scroll to zoom • Click dots for details
       </div>
     </div>
   )
