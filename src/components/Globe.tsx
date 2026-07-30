@@ -26,7 +26,10 @@ export default function Globe({
   const onClickRef = useRef(onNewsClick)
 
   useEffect(() => { newsRef.current = newsItems }, [newsItems])
-  useEffect(() => { onHoverRef.current = onNewsHover; onClickRef.current = onNewsClick }, [onNewsHover, onNewsClick])
+  useEffect(() => {
+    onHoverRef.current = onNewsHover
+    onClickRef.current = onNewsClick
+  }, [onNewsHover, onNewsClick])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -34,12 +37,12 @@ export default function Globe({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const isMobile = window.innerWidth < 768
+    const isMobile = window.innerWidth < 640
     const availW = Math.min(width, window.innerWidth - (isMobile ? 0 : 24))
-    const availH = Math.min(height, window.innerHeight - (isMobile ? 120 : 100))
-    const w = availW
-    const h = availH
-    const baseScale = Math.min(w, h) / 2.5
+    const availH = Math.min(height, window.innerHeight - (isMobile ? 180 : 100))
+    let w = availW
+    let h = availH
+    let baseScale = Math.min(w, h) / 2.5
     const dpr = window.devicePixelRatio || 1
 
     canvas.width = w * dpr
@@ -66,7 +69,7 @@ export default function Globe({
       const cx = w / 2
       const cy = h / 2
 
-      // Ocean sphere - solid opaque realistic ocean
+      // Ocean sphere
       const oceanGrad = ctx.createRadialGradient(
         cx - scale * 0.35, cy - scale * 0.35, scale * 0.05,
         cx, cy, scale
@@ -86,7 +89,6 @@ export default function Globe({
         ctx.arc(cx, cy, scale, 0, 2 * Math.PI)
         ctx.clip()
 
-        // Land - solid opaque fill, realistic green/brown
         land.features.forEach((feature: any) => {
           ctx.beginPath()
           path(feature)
@@ -94,7 +96,6 @@ export default function Globe({
           ctx.fill()
         })
 
-        // Land shading - darker on one side for 3D effect
         land.features.forEach((feature: any) => {
           ctx.beginPath()
           path(feature)
@@ -106,7 +107,6 @@ export default function Globe({
           ctx.fill()
         })
 
-        // Country borders - thin, subtle
         if (countries) {
           ctx.beginPath()
           countries.features.forEach((feature: any) => {
@@ -117,7 +117,6 @@ export default function Globe({
           ctx.stroke()
         }
 
-        // Coastline outline
         ctx.beginPath()
         land.features.forEach((feature: any) => {
           path(feature)
@@ -129,7 +128,7 @@ export default function Globe({
         ctx.restore()
       }
 
-      // Atmospheric glow ring
+      // Atmospheric glow
       const glowGrad = ctx.createRadialGradient(cx, cy, scale * 0.96, cx, cy, scale * 1.1)
       glowGrad.addColorStop(0, 'rgba(80, 160, 255, 0.2)')
       glowGrad.addColorStop(0.5, 'rgba(60, 130, 220, 0.06)')
@@ -139,33 +138,34 @@ export default function Globe({
       ctx.fillStyle = glowGrad
       ctx.fill()
 
-      // News dots - ONLY on the visible near side
+      // News dots — back-face culled via d3.geoDistance
+      // Points > PI/2 radians from the visible center are on the far side of the globe
+      const rotCenter = projection.rotate() as [number, number]
       const items = newsRef.current
       const hovered = hoveredRef.current
 
       items.forEach(item => {
-        const pos = projection([item.lng, item.lat])
-        if (!pos) return // far side returns null - hidden by globe
-        const dist = Math.hypot(pos[0] - cx, pos[1] - cy)
-        if (dist > scale) return // outside globe circle - hidden
+        const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
+        if (angularDist > Math.PI / 2) return
 
-        const isHovered = hovered && hovered.url === item.url
+        const pos = projection([item.lng, item.lat])
+        if (!pos) return
+        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) return
+
+        const isHovered = hovered?.url === item.url
         const dotRadius = Math.max(2.5, 2.5 * zoom)
         const radius = isHovered ? dotRadius * 2 : dotRadius
         const color = item.category === 'accident' ? '#ef4444' : '#3b82f6'
-        const glowColor = item.category === 'accident' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(59, 130, 246, 0.5)'
+        const glowColor = item.category === 'accident' ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.5)'
 
-        // Glow halo
-        const glowRadius = radius * 2.5
-        const haloGrad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], glowRadius)
+        const haloGrad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], radius * 2.5)
         haloGrad.addColorStop(0, glowColor)
-        haloGrad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        haloGrad.addColorStop(1, 'rgba(0,0,0,0)')
         ctx.beginPath()
-        ctx.arc(pos[0], pos[1], glowRadius, 0, 2 * Math.PI)
+        ctx.arc(pos[0], pos[1], radius * 2.5, 0, 2 * Math.PI)
         ctx.fillStyle = haloGrad
         ctx.fill()
 
-        // Solid opaque dot
         ctx.beginPath()
         ctx.arc(pos[0], pos[1], radius, 0, 2 * Math.PI)
         ctx.fillStyle = color
@@ -174,7 +174,7 @@ export default function Globe({
         if (isHovered) {
           ctx.beginPath()
           ctx.arc(pos[0], pos[1], radius + 2, 0, 2 * Math.PI)
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)'
           ctx.lineWidth = 1.5
           ctx.stroke()
         }
@@ -199,7 +199,6 @@ export default function Globe({
       }
     }
 
-    // Rotation state
     let rotation = [-20, -15, 0]
     let autoRotate = true
     const rotateSpeed = 0.25
@@ -212,13 +211,15 @@ export default function Globe({
       }
     })
 
-    // --- Mouse: only rotate on click+drag, NOT on hover ---
+    // — Mouse drag to rotate —
     let isDragging = false
+    let hasDragged = false
     let dragStart = { x: 0, y: 0 }
     let rotStart = [0, 0, 0]
 
     const handleMouseDown = (e: MouseEvent) => {
       isDragging = true
+      hasDragged = false
       autoRotate = false
       dragStart = { x: e.clientX, y: e.clientY }
       rotStart = [...rotation]
@@ -226,17 +227,16 @@ export default function Globe({
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Only rotate if mouse button is held down (clicking and dragging)
       if (isDragging) {
         const dx = e.clientX - dragStart.x
         const dy = e.clientY - dragStart.y
+        if (Math.hypot(dx, dy) > 3) hasDragged = true
         rotation[0] = rotStart[0] + dx * 0.4
         rotation[1] = Math.max(-90, Math.min(90, rotStart[1] - dy * 0.4))
         projection.rotate(rotation)
         render()
       }
 
-      // Hover detection (separate from rotation)
       const rect = canvas.getBoundingClientRect()
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top
@@ -244,9 +244,13 @@ export default function Globe({
       const cy = h / 2
       const scale = projection.scale()
       const zoom = scale / baseScale
+      const rotCenter = projection.rotate() as [number, number]
       let closest: NewsItem | null = null
       let closestDist = Infinity
+
       for (const item of newsRef.current) {
+        const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
+        if (angularDist > Math.PI / 2) continue
         const pos = projection([item.lng, item.lat])
         if (!pos) continue
         if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
@@ -262,6 +266,7 @@ export default function Globe({
         render()
       }
       onHoverRef.current?.(closest, e.clientX, e.clientY)
+      canvas.style.cursor = isDragging ? 'grabbing' : (closest ? 'pointer' : 'grab')
     }
 
     const handleMouseUp = () => {
@@ -269,6 +274,31 @@ export default function Globe({
         isDragging = false
         canvas.style.cursor = 'grab'
         setTimeout(() => { autoRotate = true }, 3000)
+      }
+    }
+
+    const handleClick = (e: MouseEvent) => {
+      if (hasDragged) return
+      const rect = canvas.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      const cx = w / 2
+      const cy = h / 2
+      const scale = projection.scale()
+      const zoom = scale / baseScale
+      const rotCenter = projection.rotate() as [number, number]
+
+      for (const item of newsRef.current) {
+        const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
+        if (angularDist > Math.PI / 2) continue
+        const pos = projection([item.lng, item.lat])
+        if (!pos) continue
+        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
+        const dist = Math.hypot(pos[0] - mx, pos[1] - my)
+        if (dist < Math.max(8, 5 * zoom)) {
+          onClickRef.current?.(item)
+          return
+        }
       }
     }
 
@@ -280,33 +310,11 @@ export default function Globe({
       render()
     }
 
-    const handleClick = (e: MouseEvent) => {
-      if (!isDragging) {
-        const rect = canvas.getBoundingClientRect()
-        const mx = e.clientX - rect.left
-        const my = e.clientY - rect.top
-        const cx = w / 2
-        const cy = h / 2
-        const scale = projection.scale()
-        const zoom = scale / baseScale
-        for (const item of newsRef.current) {
-          const pos = projection([item.lng, item.lat])
-          if (!pos) continue
-          if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-          const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-          const threshold = Math.max(8, 5 * zoom)
-          if (dist < threshold) {
-            onClickRef.current?.(item)
-            return
-          }
-        }
-      }
-    }
-
-    // --- Touch support ---
+    // — Touch: drag to rotate, pinch to zoom, tap to click dots —
     let touchStart = { x: 0, y: 0 }
     let touchRotStart = [0, 0, 0]
     let isTouchDragging = false
+    let touchHasDragged = false
     let pinchStartDist = 0
     let pinchStartScale = 0
 
@@ -315,6 +323,7 @@ export default function Globe({
       autoRotate = false
       if (e.touches.length === 1) {
         isTouchDragging = true
+        touchHasDragged = false
         touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }
         touchRotStart = [...rotation]
       } else if (e.touches.length === 2) {
@@ -331,6 +340,7 @@ export default function Globe({
       if (e.touches.length === 1 && isTouchDragging) {
         const dx = e.touches[0].clientX - touchStart.x
         const dy = e.touches[0].clientY - touchStart.y
+        if (Math.hypot(dx, dy) > 5) touchHasDragged = true
         rotation[0] = touchRotStart[0] + dx * 0.4
         rotation[1] = Math.max(-90, Math.min(90, touchRotStart[1] - dy * 0.4))
         projection.rotate(rotation)
@@ -339,8 +349,7 @@ export default function Globe({
         const dx = e.touches[0].clientX - e.touches[1].clientX
         const dy = e.touches[0].clientY - e.touches[1].clientY
         const dist = Math.hypot(dx, dy)
-        const factor = dist / pinchStartDist
-        const newScale = Math.max(baseScale * 0.6, Math.min(baseScale * 5, pinchStartScale * factor))
+        const newScale = Math.max(baseScale * 0.6, Math.min(baseScale * 5, pinchStartScale * (dist / pinchStartDist)))
         projection.scale(newScale)
         render()
       }
@@ -349,26 +358,27 @@ export default function Globe({
     const handleTouchEnd = (e: TouchEvent) => {
       e.preventDefault()
       if (e.touches.length === 0) {
-        // Tap detection for clicking dots
-        if (!isTouchDragging || (Math.abs(e.changedTouches[0]?.clientX - touchStart.x) < 10 && Math.abs(e.changedTouches[0]?.clientY - touchStart.y) < 10)) {
-          if (e.changedTouches.length === 1) {
-            const rect = canvas.getBoundingClientRect()
-            const mx = e.changedTouches[0].clientX - rect.left
-            const my = e.changedTouches[0].clientY - rect.top
-            const cx = w / 2
-            const cy = h / 2
-            const scale = projection.scale()
-            const zoom = scale / baseScale
-            for (const item of newsRef.current) {
-              const pos = projection([item.lng, item.lat])
-              if (!pos) continue
-              if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-              const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-              const threshold = Math.max(12, 8 * zoom)
-              if (dist < threshold) {
-                onClickRef.current?.(item)
-                break
-              }
+        // Tap to open article directly on mobile
+        if (!touchHasDragged && e.changedTouches.length === 1) {
+          const rect = canvas.getBoundingClientRect()
+          const mx = e.changedTouches[0].clientX - rect.left
+          const my = e.changedTouches[0].clientY - rect.top
+          const cx = w / 2
+          const cy = h / 2
+          const scale = projection.scale()
+          const zoom = scale / baseScale
+          const rotCenter = projection.rotate() as [number, number]
+
+          for (const item of newsRef.current) {
+            const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
+            if (angularDist > Math.PI / 2) continue
+            const pos = projection([item.lng, item.lat])
+            if (!pos) continue
+            if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
+            const dist = Math.hypot(pos[0] - mx, pos[1] - my)
+            if (dist < Math.max(16, 10 * zoom)) {
+              onClickRef.current?.(item)
+              break
             }
           }
         }
@@ -391,17 +401,17 @@ export default function Globe({
     const newsInterval = setInterval(render, 2000)
 
     const handleResize = () => {
-      const newIsMobile = window.innerWidth < 768
-      const newW = Math.min(width, window.innerWidth - (newIsMobile ? 0 : 24))
-      const newH = Math.min(height, window.innerHeight - (newIsMobile ? 120 : 100))
-      canvas.width = newW * dpr
-      canvas.height = newH * dpr
-      canvas.style.width = `${newW}px`
-      canvas.style.height = `${newH}px`
+      const newIsMobile = window.innerWidth < 640
+      w = Math.min(width, window.innerWidth - (newIsMobile ? 0 : 24))
+      h = Math.min(height, window.innerHeight - (newIsMobile ? 180 : 100))
+      baseScale = Math.min(w, h) / 2.5
+      canvas.width = w * dpr
+      canvas.height = h * dpr
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
       ctx.scale(dpr, dpr)
-      projection.translate([newW / 2, newH / 2])
-      const newScale = Math.min(newW, newH) / 2.5
-      projection.scale(newScale)
+      projection.translate([w / 2, h / 2])
+      projection.scale(baseScale)
       render()
     }
     window.addEventListener('resize', handleResize)
@@ -437,15 +447,16 @@ export default function Globe({
       <canvas
         ref={canvasRef}
         className="rounded-2xl bg-black cursor-grab active:cursor-grabbing touch-none"
-        style={{ maxWidth: '100%', height: 'auto' }}
+        style={{ maxWidth: '100%', maxHeight: '100%' }}
       />
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black">
           <div className="text-neutral-400 text-sm animate-pulse">Loading world map...</div>
         </div>
       )}
-      <div className="absolute bottom-4 left-4 text-xs text-neutral-400 px-3 py-1.5 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-neutral-700/50 pointer-events-none">
-        Click and drag to rotate • Scroll to zoom • Click dots for details
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 sm:left-4 sm:translate-x-0 text-xs text-neutral-400 px-3 py-1.5 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-neutral-700/50 pointer-events-none whitespace-nowrap">
+        <span className="hidden sm:inline">Drag to rotate • Scroll to zoom • Click dots for article</span>
+        <span className="sm:hidden">Drag to rotate • Pinch to zoom • Tap dots</span>
       </div>
     </div>
   )
