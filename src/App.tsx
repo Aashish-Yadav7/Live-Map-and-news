@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Globe as GlobeIcon, AlertTriangle, Microscope, Loader2, X, ExternalLink } from 'lucide-react'
+import { Globe as GlobeIcon, AlertTriangle, Microscope, Loader2, X, ExternalLink, Search } from 'lucide-react'
 import Globe from './components/Globe'
 import { useNews } from './hooks/useNews'
 import type { NewsItem } from './types'
@@ -18,14 +18,14 @@ export default function App() {
   const accidentCount = items.filter(i => i.category === 'accident').length
   const researchCount = items.filter(i => i.category === 'research').length
 
-  const openArticle = (item: NewsItem) => {
-    window.open(item.url, '_blank', 'noopener,noreferrer')
+  const googleSearch = (item: NewsItem) => {
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(item.title)}`, '_blank', 'noopener,noreferrer')
   }
 
   return (
     <div className="h-screen w-screen bg-gradient-to-b from-neutral-950 via-black to-neutral-950 text-white flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-neutral-800/60 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between flex-wrap gap-3 flex-shrink-0">
+      <header className="border-b border-neutral-800/60 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-shrink-0">
         <div className="flex items-center gap-3">
           <GlobeIcon className="w-6 h-6 sm:w-7 sm:h-7 text-blue-400" />
           <div>
@@ -55,14 +55,15 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main content — stacks vertically on mobile, side-by-side on desktop */}
+      {/* Main content
+          Mobile  : globe fixed at top (55vh), news scrolls below
+          Desktop : globe left, news sidebar right */}
       <main className="flex-1 flex flex-col sm:flex-row relative overflow-hidden min-h-0">
 
-        {/* Globe — fills space on both layouts */}
-        <div className="flex-1 flex items-center justify-center p-2 sm:p-4 relative overflow-hidden min-h-0">
+        {/* Globe — fixed upper region on mobile, left pane on desktop */}
+        <div className="relative overflow-hidden flex-shrink-0
+                        h-[52vh] sm:h-full sm:flex-1">
           <Globe
-            width={900}
-            height={700}
             newsItems={items}
             onNewsHover={handleHover}
             onNewsClick={setSelected}
@@ -100,73 +101,50 @@ export default function App() {
           )}
         </div>
 
-        {/* News panel — bottom strip on mobile, right sidebar on desktop */}
-        <aside className="
-          h-44 w-full border-t border-neutral-800/60 bg-neutral-950/80
-          sm:h-auto sm:w-80 sm:border-t-0 sm:border-l sm:border-neutral-800/60
-          flex flex-col flex-shrink-0 overflow-hidden
-        ">
-          <div className="px-4 py-2 sm:py-3 border-b border-neutral-800/60 flex items-center justify-between flex-shrink-0">
+        {/* News panel — scrolls below globe on mobile, right sidebar on desktop */}
+        <aside className="flex flex-col flex-shrink-0 overflow-hidden
+                          flex-1 sm:flex-none sm:w-80
+                          border-t sm:border-t-0 sm:border-l border-neutral-800/60
+                          bg-neutral-950/80 min-h-0">
+          <div className="px-4 py-3 border-b border-neutral-800/60 flex items-center justify-between flex-shrink-0">
             <h2 className="text-sm font-semibold text-neutral-200">Latest Reports</h2>
             <span className="text-xs text-neutral-500">{items.length} items</span>
           </div>
-          {/* Horizontal scroll on mobile, vertical on desktop */}
-          <div className="flex-1 overflow-x-auto sm:overflow-x-hidden overflow-y-hidden sm:overflow-y-auto overscroll-contain min-w-0 min-h-0">
-            <div className="flex flex-row sm:flex-col h-full sm:h-auto">
-              {items.length === 0 && !loading && (
-                <div className="p-4 text-sm text-neutral-500 text-center whitespace-nowrap sm:whitespace-normal">
-                  {error ? 'Could not load news data.' : 'No news items found.'}
+          <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
+            {items.length === 0 && !loading && (
+              <div className="p-4 text-sm text-neutral-500 text-center">
+                {error ? 'Could not load news data.' : 'No news items found.'}
+              </div>
+            )}
+            {items.map((item, idx) => (
+              <button
+                key={idx}
+                className={`w-full text-left px-4 py-3 border-b border-neutral-800/40 hover:bg-neutral-800/40 active:bg-neutral-800/60 transition-colors flex items-start gap-3 ${selected?.url === item.url ? 'bg-neutral-800/50' : ''}`}
+                onClick={() => setSelected(item)}
+              >
+                <div className="mt-1 flex-shrink-0">
+                  {item.category === 'accident' ? (
+                    <span className="block w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" />
+                  ) : (
+                    <span className="block w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
+                  )}
                 </div>
-              )}
-              {items.map((item, idx) => (
-                <a
-                  key={idx}
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`
-                    flex-shrink-0 w-56 sm:w-auto
-                    text-left px-3 sm:px-4 py-2 sm:py-3
-                    border-r sm:border-r-0 sm:border-b border-neutral-800/40
-                    hover:bg-neutral-800/40 active:bg-neutral-800/60
-                    transition-colors flex items-start gap-3
-                    ${selected?.url === item.url ? 'bg-neutral-800/50' : ''}
-                  `}
-                  onClick={(e) => {
-                    // On desktop, also show the detail panel
-                    if (window.innerWidth >= 640) {
-                      e.preventDefault()
-                      setSelected(item)
-                    }
-                  }}
-                >
-                  <div className="mt-1 flex-shrink-0">
-                    {item.category === 'accident' ? (
-                      <span className="block w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" />
-                    ) : (
-                      <span className="block w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm text-neutral-200 leading-snug line-clamp-2 sm:line-clamp-2">{item.title}</p>
-                    <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
-                      {item.source}
-                      <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 text-neutral-600" />
-                    </p>
-                  </div>
-                </a>
-              ))}
-            </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-neutral-200 leading-snug line-clamp-2">{item.title}</p>
+                  <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
+                    {item.source}
+                    <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 text-neutral-600" />
+                  </p>
+                </div>
+              </button>
+            ))}
           </div>
         </aside>
       </main>
 
-      {/* Detail panel — opens on desktop when globe dot is clicked */}
+      {/* Detail panel */}
       {selected && (
-        <div
-          className="fixed inset-0 z-40 flex justify-end"
-          onClick={() => setSelected(null)}
-        >
+        <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setSelected(null)}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div
             className="relative w-full max-w-md bg-neutral-950 border-l border-neutral-800 h-full overflow-y-auto animate-slide-in"
@@ -196,9 +174,7 @@ export default function App() {
                 <span className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-300">{selected.source}</span>
                 <span>
                   {new Date(selected.publishedAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
+                    month: 'short', day: 'numeric', year: 'numeric',
                   })}
                 </span>
               </div>
@@ -212,21 +188,24 @@ export default function App() {
                   <p className="leading-relaxed">{selected.summary}</p>
                 </div>
               )}
-              <a
-                href={selected.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 transition-colors rounded-lg text-sm font-medium text-white"
-              >
-                Read full article
-                <ExternalLink className="w-4 h-4" />
-              </a>
-              <button
-                onClick={() => openArticle(selected)}
-                className="block w-full text-center px-4 py-2.5 border border-neutral-700 hover:border-neutral-500 transition-colors rounded-lg text-sm text-neutral-300 hover:text-white"
-              >
-                Search on Google
-              </button>
+              <div className="space-y-2 pt-2">
+                <a
+                  href={selected.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 transition-colors rounded-lg text-sm font-medium text-white"
+                >
+                  Read full article
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <button
+                  onClick={() => googleSearch(selected)}
+                  className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-neutral-700 hover:border-neutral-500 transition-colors rounded-lg text-sm text-neutral-300 hover:text-white"
+                >
+                  <Search className="w-4 h-4" />
+                  Search on Google
+                </button>
+              </div>
             </div>
           </div>
         </div>

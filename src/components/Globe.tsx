@@ -1,462 +1,411 @@
-import { useRef, useState, useEffect } from 'react'
-import * as d3 from 'd3'
+import { useRef, useEffect } from 'react'
+import * as THREE from 'three'
 import type { NewsItem } from '../types'
 
 interface GlobeProps {
-  width?: number
-  height?: number
   newsItems: NewsItem[]
   onNewsHover?: (item: NewsItem | null, x: number, y: number) => void
-  onNewsClick?: (item: NewsItem | null) => void
+  onNewsClick?: (item: NewsItem) => void
 }
 
-export default function Globe({
-  width = 900,
-  height = 700,
-  newsItems,
-  onNewsHover,
-  onNewsClick,
-}: GlobeProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+// Convert geographic coordinates to a 3D point on the sphere surface
+function latLngToVec3(lat: number, lng: number, radius = 1.0): THREE.Vector3 {
+  const phi = (90 - lat) * (Math.PI / 180)
+  const theta = (lng + 180) * (Math.PI / 180)
+  return new THREE.Vector3(
+    -radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta)
+  )
+}
+
+// Create a glowing dot canvas texture
+function makeMarkerTexture(color: string): THREE.CanvasTexture {
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const cx = size / 2
+  const r = size / 2
+  const grad = ctx.createRadialGradient(cx, cx, r * 0.05, cx, cx, r)
+  grad.addColorStop(0.0, color)
+  grad.addColorStop(0.25, color)
+  grad.addColorStop(0.5, color.replace(')', ', 0.6)').replace('rgb', 'rgba'))
+  grad.addColorStop(1.0, 'rgba(0,0,0,0)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, size, size)
+  return new THREE.CanvasTexture(canvas)
+}
+
+export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProps) {
+  const mountRef = useRef<HTMLDivElement>(null)
   const newsRef = useRef(newsItems)
-  const hoveredRef = useRef<NewsItem | null>(null)
   const onHoverRef = useRef(onNewsHover)
   const onClickRef = useRef(onNewsClick)
+  const sceneRef = useRef<{
+    renderer: THREE.WebGLRenderer
+    scene: THREE.Scene
+    camera: THREE.PerspectiveCamera
+    globe: THREE.Mesh
+    markerGroup: THREE.Group
+    markers: Array<{ mesh: THREE.Mesh; item: NewsItem }>
+    animId: number
+  } | null>(null)
 
+  // Keep refs up to date without re-mounting
   useEffect(() => { newsRef.current = newsItems }, [newsItems])
+  useEffect(() => { onHoverRef.current = onNewsHover }, [onNewsHover])
+  useEffect(() => { onClickRef.current = onNewsClick }, [onNewsClick])
+
+  // Rebuild markers whenever newsItems changes (after scene exists)
   useEffect(() => {
-    onHoverRef.current = onNewsHover
-    onClickRef.current = onNewsClick
-  }, [onNewsHover, onNewsClick])
+    const s = sceneRef.current
+    if (!s || newsItems.length === 0) return
+
+    // Clear old markers
+    s.markerGroup.clear()
+    s.markers.length = 0
+
+    const accidentTex = makeMarkerTexture('rgb(239,68,68)')
+    const researchTex = makeMarkerTexture('rgb(59,130,246)')
+    const markerGeo = new THREE.SphereGeometry(0.022, 10, 10)
+
+    newsItems.forEach(item => {
+      const mat = new THREE.MeshBasicMaterial({
+        color: item.category === 'accident' ? 0xef4444 : 0x3b82f6,
+        depthTest: true,
+        depthWrite: false,
+        transparent: false,
+      })
+      const dot = new THREE.Mesh(markerGeo, mat)
+      dot.position.copy(latLngToVec3(item.lat, item.lng, 1.022))
+      s.markerGroup.add(dot)
+      s.markers.push({ mesh: dot, item })
+
+      // Glow sprite sits just above the dot — also depth tested
+      const spriteMat = new THREE.SpriteMaterial({
+        map: item.category === 'accident' ? accidentTex : researchTex,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        sizeAttenuation: true,
+      })
+      const sprite = new THREE.Sprite(spriteMat)
+      sprite.scale.setScalar(0.09)
+      sprite.position.copy(latLngToVec3(item.lat, item.lng, 1.025))
+      s.markerGroup.add(sprite)
+    })
+  }, [newsItems])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const mount = mountRef.current
+    if (!mount) return
 
-    const isMobile = window.innerWidth < 640
-    const availW = Math.min(width, window.innerWidth - (isMobile ? 0 : 24))
-    const availH = Math.min(height, window.innerHeight - (isMobile ? 180 : 100))
-    let w = availW
-    let h = availH
-    let baseScale = Math.min(w, h) / 2.5
-    const dpr = window.devicePixelRatio || 1
+    // ── Scene ────────────────────────────────────────────────────────────────
+    const scene = new THREE.Scene()
 
-    canvas.width = w * dpr
-    canvas.height = h * dpr
-    canvas.style.width = `${w}px`
-    canvas.style.height = `${h}px`
-    ctx.scale(dpr, dpr)
+    // ── Camera ───────────────────────────────────────────────────────────────
+    const w = mount.clientWidth || 800
+    const h = mount.clientHeight || 600
+    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100)
+    camera.position.set(0, 0, 2.8)
 
-    const projection = d3.geoOrthographic()
-      .scale(baseScale)
-      .translate([w / 2, h / 2])
-      .clipAngle(90)
+    // ── Renderer ─────────────────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setSize(w, h)
+    renderer.setClearColor(0x000000, 0)
+    mount.appendChild(renderer.domElement)
 
-    const path = d3.geoPath().projection(projection).context(ctx)
+    // ── Starfield ────────────────────────────────────────────────────────────
+    const starGeo = new THREE.BufferGeometry()
+    const starCount = 3000
+    const starPos = new Float32Array(starCount * 3)
+    for (let i = 0; i < starCount * 3; i++) {
+      starPos[i] = (Math.random() - 0.5) * 200
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3))
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, sizeAttenuation: true })
+    scene.add(new THREE.Points(starGeo, starMat))
 
-    let land: any = null
-    let countries: any = null
+    // ── Globe sphere ─────────────────────────────────────────────────────────
+    const globeGeo = new THREE.SphereGeometry(1, 64, 64)
 
-    const render = () => {
-      ctx.clearRect(0, 0, w, h)
+    // Load satellite texture from CDN (NASA Blue Marble via three-globe package)
+    const loader = new THREE.TextureLoader()
+    loader.crossOrigin = 'anonymous'
 
-      const scale = projection.scale()
-      const zoom = scale / baseScale
-      const cx = w / 2
-      const cy = h / 2
+    const globeMat = new THREE.MeshPhongMaterial({
+      color: 0x2244aa,  // Fallback ocean color while texture loads
+      shininess: 25,
+    })
+    const globe = new THREE.Mesh(globeGeo, globeMat)
+    scene.add(globe)
 
-      // Ocean sphere
-      const oceanGrad = ctx.createRadialGradient(
-        cx - scale * 0.35, cy - scale * 0.35, scale * 0.05,
-        cx, cy, scale
-      )
-      oceanGrad.addColorStop(0, '#2a6ba8')
-      oceanGrad.addColorStop(0.4, '#1a4d80')
-      oceanGrad.addColorStop(0.75, '#0d3060')
-      oceanGrad.addColorStop(1, '#051a3a')
-      ctx.beginPath()
-      ctx.arc(cx, cy, scale, 0, 2 * Math.PI)
-      ctx.fillStyle = oceanGrad
-      ctx.fill()
-
-      if (land) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.arc(cx, cy, scale, 0, 2 * Math.PI)
-        ctx.clip()
-
-        land.features.forEach((feature: any) => {
-          ctx.beginPath()
-          path(feature)
-          ctx.fillStyle = '#3a6b4a'
-          ctx.fill()
-        })
-
-        land.features.forEach((feature: any) => {
-          ctx.beginPath()
-          path(feature)
-          const shadeGrad = ctx.createLinearGradient(cx - scale, cy - scale, cx + scale * 0.5, cy + scale * 0.5)
-          shadeGrad.addColorStop(0, 'rgba(50, 100, 65, 0.5)')
-          shadeGrad.addColorStop(0.5, 'rgba(30, 70, 45, 0.2)')
-          shadeGrad.addColorStop(1, 'rgba(10, 40, 25, 0.4)')
-          ctx.fillStyle = shadeGrad
-          ctx.fill()
-        })
-
-        if (countries) {
-          ctx.beginPath()
-          countries.features.forEach((feature: any) => {
-            path(feature)
-          })
-          ctx.strokeStyle = 'rgba(120, 170, 140, 0.25)'
-          ctx.lineWidth = Math.max(0.3, 0.4 * zoom)
-          ctx.stroke()
-        }
-
-        ctx.beginPath()
-        land.features.forEach((feature: any) => {
-          path(feature)
-        })
-        ctx.strokeStyle = 'rgba(140, 190, 160, 0.4)'
-        ctx.lineWidth = Math.max(0.4, 0.6 * zoom)
-        ctx.stroke()
-
-        ctx.restore()
-      }
-
-      // Atmospheric glow
-      const glowGrad = ctx.createRadialGradient(cx, cy, scale * 0.96, cx, cy, scale * 1.1)
-      glowGrad.addColorStop(0, 'rgba(80, 160, 255, 0.2)')
-      glowGrad.addColorStop(0.5, 'rgba(60, 130, 220, 0.06)')
-      glowGrad.addColorStop(1, 'rgba(40, 100, 200, 0)')
-      ctx.beginPath()
-      ctx.arc(cx, cy, scale * 1.1, 0, 2 * Math.PI)
-      ctx.fillStyle = glowGrad
-      ctx.fill()
-
-      // News dots — back-face culled via d3.geoDistance
-      // Points > PI/2 radians from the visible center are on the far side of the globe
-      const rotCenter = projection.rotate() as [number, number]
-      const items = newsRef.current
-      const hovered = hoveredRef.current
-
-      items.forEach(item => {
-        const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
-        if (angularDist > Math.PI / 2) return
-
-        const pos = projection([item.lng, item.lat])
-        if (!pos) return
-        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) return
-
-        const isHovered = hovered?.url === item.url
-        const dotRadius = Math.max(2.5, 2.5 * zoom)
-        const radius = isHovered ? dotRadius * 2 : dotRadius
-        const color = item.category === 'accident' ? '#ef4444' : '#3b82f6'
-        const glowColor = item.category === 'accident' ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.5)'
-
-        const haloGrad = ctx.createRadialGradient(pos[0], pos[1], 0, pos[0], pos[1], radius * 2.5)
-        haloGrad.addColorStop(0, glowColor)
-        haloGrad.addColorStop(1, 'rgba(0,0,0,0)')
-        ctx.beginPath()
-        ctx.arc(pos[0], pos[1], radius * 2.5, 0, 2 * Math.PI)
-        ctx.fillStyle = haloGrad
-        ctx.fill()
-
-        ctx.beginPath()
-        ctx.arc(pos[0], pos[1], radius, 0, 2 * Math.PI)
-        ctx.fillStyle = color
-        ctx.fill()
-
-        if (isHovered) {
-          ctx.beginPath()
-          ctx.arc(pos[0], pos[1], radius + 2, 0, 2 * Math.PI)
-          ctx.strokeStyle = 'rgba(255,255,255,0.9)'
-          ctx.lineWidth = 1.5
-          ctx.stroke()
+    // Load day texture — try primary CDN, fall back to secondary
+    const tryTextures = [
+      'https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg',
+      'https://cdn.jsdelivr.net/npm/three-globe@2.31.1/example/img/earth-blue-marble.jpg',
+    ]
+    let loaded = false
+    tryTextures.forEach((url, i) => {
+      if (loaded) return
+      loader.load(url, (tex) => {
+        if (loaded) return
+        loaded = true
+        tex.colorSpace = THREE.SRGBColorSpace
+        globeMat.map = tex
+        globeMat.color.set(0xffffff)
+        globeMat.needsUpdate = true
+      }, undefined, () => {
+        if (i === tryTextures.length - 1 && !loaded) {
+          // Both CDNs failed — use a procedural fallback (ocean + land colors)
+          globeMat.color.set(0x1a4d80)
         }
       })
-    }
-
-    const loadData = async () => {
-      try {
-        setLoading(true)
-        const [landRes, countriesRes] = await Promise.all([
-          fetch('/data/ne_110m_land.json'),
-          fetch('/data/ne_110m_countries.json'),
-        ])
-        if (!landRes.ok || !countriesRes.ok) throw new Error('Failed to load map data')
-        land = await landRes.json()
-        countries = await countriesRes.json()
-        render()
-        setLoading(false)
-      } catch {
-        setError('Failed to load map data')
-        setLoading(false)
-      }
-    }
-
-    let rotation = [-20, -15, 0]
-    let autoRotate = true
-    const rotateSpeed = 0.25
-
-    const autoRotateAnim = d3.timer(() => {
-      if (autoRotate) {
-        rotation[0] += rotateSpeed
-        projection.rotate(rotation)
-        render()
-      }
     })
 
-    // — Mouse drag to rotate —
+    // Specular (water shine) map
+    loader.load('https://unpkg.com/three-globe@2.31.1/example/img/earth-water.png', (tex) => {
+      globeMat.specularMap = tex
+      globeMat.specular = new THREE.Color(0x888888)
+      globeMat.needsUpdate = true
+    })
+
+    // Bump map for terrain depth
+    loader.load('https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png', (tex) => {
+      globeMat.bumpMap = tex
+      globeMat.bumpScale = 0.008
+      globeMat.needsUpdate = true
+    })
+
+    // ── Atmosphere glow ───────────────────────────────────────────────────────
+    const atmosGeo = new THREE.SphereGeometry(1.025, 64, 64)
+    const atmosMat = new THREE.MeshPhongMaterial({
+      color: 0x3399ff,
+      transparent: true,
+      opacity: 0.08,
+      side: THREE.BackSide,
+      depthWrite: false,
+    })
+    scene.add(new THREE.Mesh(atmosGeo, atmosMat))
+
+    // Outer glow halo
+    const haloGeo = new THREE.SphereGeometry(1.08, 64, 64)
+    const haloMat = new THREE.MeshPhongMaterial({
+      color: 0x88bbff,
+      transparent: true,
+      opacity: 0.04,
+      side: THREE.BackSide,
+      depthWrite: false,
+    })
+    scene.add(new THREE.Mesh(haloGeo, haloMat))
+
+    // ── Lighting ──────────────────────────────────────────────────────────────
+    const ambient = new THREE.AmbientLight(0xffffff, 0.35)
+    scene.add(ambient)
+    const sun = new THREE.DirectionalLight(0xfff5e0, 1.4)
+    sun.position.set(5, 3, 5)
+    scene.add(sun)
+    // Subtle blue fill from the opposite side
+    const fill = new THREE.DirectionalLight(0x4488ff, 0.15)
+    fill.position.set(-5, -2, -3)
+    scene.add(fill)
+
+    // ── Marker group (parented to globe so they rotate with it) ───────────────
+    const markerGroup = new THREE.Group()
+    globe.add(markerGroup)
+
+    const markers: Array<{ mesh: THREE.Mesh; item: NewsItem }> = []
+
+    sceneRef.current = { renderer, scene, camera, globe, markerGroup, markers, animId: 0 }
+
+    // ── Rotation state ────────────────────────────────────────────────────────
+    let autoRotate = true
+    const euler = new THREE.Euler(
+      THREE.MathUtils.degToRad(-15),
+      THREE.MathUtils.degToRad(-20),
+      0,
+      'YXZ'
+    )
+    globe.rotation.copy(euler)
+
+    // ── Animation loop ────────────────────────────────────────────────────────
+    let animId = 0
+    const animate = () => {
+      animId = requestAnimationFrame(animate)
+      if (autoRotate) {
+        globe.rotation.y += 0.003
+      }
+      renderer.render(scene, camera)
+    }
+    animate()
+    sceneRef.current.animId = animId
+
+    // ── Raycaster for hover / click ────────────────────────────────────────────
+    const raycaster = new THREE.Raycaster()
+    const mouse = new THREE.Vector2()
+    let hoveredItem: NewsItem | null = null
+
+    const getMeshes = () => sceneRef.current?.markers.map(m => m.mesh) ?? []
+
+    const raycast = (clientX: number, clientY: number) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1
+      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(mouse, camera)
+      // Test against globe first — anything behind it is automatically culled by depth
+      const hits = raycaster.intersectObjects(getMeshes())
+      if (hits.length > 0) {
+        const found = sceneRef.current?.markers.find(m => m.mesh === hits[0].object)
+        return found?.item ?? null
+      }
+      return null
+    }
+
+    // ── Mouse drag ────────────────────────────────────────────────────────────
     let isDragging = false
     let hasDragged = false
-    let dragStart = { x: 0, y: 0 }
-    let rotStart = [0, 0, 0]
+    let dragPrev = { x: 0, y: 0 }
 
-    const handleMouseDown = (e: MouseEvent) => {
+    const onMouseDown = (e: MouseEvent) => {
       isDragging = true
       hasDragged = false
       autoRotate = false
-      dragStart = { x: e.clientX, y: e.clientY }
-      rotStart = [...rotation]
-      canvas.style.cursor = 'grabbing'
+      dragPrev = { x: e.clientX, y: e.clientY }
+      renderer.domElement.style.cursor = 'grabbing'
     }
-
-    const handleMouseMove = (e: MouseEvent) => {
+    const onMouseMove = (e: MouseEvent) => {
       if (isDragging) {
-        const dx = e.clientX - dragStart.x
-        const dy = e.clientY - dragStart.y
-        if (Math.hypot(dx, dy) > 3) hasDragged = true
-        rotation[0] = rotStart[0] + dx * 0.4
-        rotation[1] = Math.max(-90, Math.min(90, rotStart[1] - dy * 0.4))
-        projection.rotate(rotation)
-        render()
-      }
-
-      const rect = canvas.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const cx = w / 2
-      const cy = h / 2
-      const scale = projection.scale()
-      const zoom = scale / baseScale
-      const rotCenter = projection.rotate() as [number, number]
-      let closest: NewsItem | null = null
-      let closestDist = Infinity
-
-      for (const item of newsRef.current) {
-        const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
-        if (angularDist > Math.PI / 2) continue
-        const pos = projection([item.lng, item.lat])
-        if (!pos) continue
-        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-        const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-        const threshold = Math.max(8, 5 * zoom)
-        if (dist < threshold && dist < closestDist) {
-          closest = item
-          closestDist = dist
+        const dx = e.clientX - dragPrev.x
+        const dy = e.clientY - dragPrev.y
+        if (Math.hypot(dx, dy) > 2) hasDragged = true
+        globe.rotation.y += dx * 0.007
+        globe.rotation.x += dy * 0.007
+        globe.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, globe.rotation.x))
+        dragPrev = { x: e.clientX, y: e.clientY }
+      } else {
+        const hit = raycast(e.clientX, e.clientY)
+        if (hit !== hoveredItem) {
+          hoveredItem = hit
+          onHoverRef.current?.(hit, e.clientX, e.clientY)
+          // Scale up the hovered marker
+          sceneRef.current?.markers.forEach(({ mesh, item }) => {
+            const s = item.url === hit?.url ? 1.8 : 1.0
+            mesh.scale.setScalar(s)
+          })
         }
-      }
-      if (closest !== hoveredRef.current) {
-        hoveredRef.current = closest
-        render()
-      }
-      onHoverRef.current?.(closest, e.clientX, e.clientY)
-      canvas.style.cursor = isDragging ? 'grabbing' : (closest ? 'pointer' : 'grab')
-    }
-
-    const handleMouseUp = () => {
-      if (isDragging) {
-        isDragging = false
-        canvas.style.cursor = 'grab'
-        setTimeout(() => { autoRotate = true }, 3000)
+        renderer.domElement.style.cursor = hit ? 'pointer' : 'grab'
       }
     }
-
-    const handleClick = (e: MouseEvent) => {
+    const onMouseUp = () => {
+      isDragging = false
+      renderer.domElement.style.cursor = hoveredItem ? 'pointer' : 'grab'
+      setTimeout(() => { autoRotate = true }, 3000)
+    }
+    const onClick = (e: MouseEvent) => {
       if (hasDragged) return
-      const rect = canvas.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const cx = w / 2
-      const cy = h / 2
-      const scale = projection.scale()
-      const zoom = scale / baseScale
-      const rotCenter = projection.rotate() as [number, number]
-
-      for (const item of newsRef.current) {
-        const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
-        if (angularDist > Math.PI / 2) continue
-        const pos = projection([item.lng, item.lat])
-        if (!pos) continue
-        if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-        const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-        if (dist < Math.max(8, 5 * zoom)) {
-          onClickRef.current?.(item)
-          return
-        }
-      }
+      const hit = raycast(e.clientX, e.clientY)
+      if (hit) onClickRef.current?.(hit)
     }
 
-    const handleWheel = (e: WheelEvent) => {
+    // ── Scroll to zoom ────────────────────────────────────────────────────────
+    const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const factor = e.deltaY > 0 ? 0.88 : 1.12
-      const newScale = Math.max(baseScale * 0.6, Math.min(baseScale * 5, projection.scale() * factor))
-      projection.scale(newScale)
-      render()
+      camera.position.z = Math.max(1.4, Math.min(6, camera.position.z + e.deltaY * 0.004))
     }
 
-    // — Touch: drag to rotate, pinch to zoom, tap to click dots —
-    let touchStart = { x: 0, y: 0 }
-    let touchRotStart = [0, 0, 0]
-    let isTouchDragging = false
-    let touchHasDragged = false
-    let pinchStartDist = 0
-    let pinchStartScale = 0
+    // ── Touch ─────────────────────────────────────────────────────────────────
+    let touchPrev = { x: 0, y: 0 }
+    let touchDragged = false
+    let pinchDist = 0
+    let pinchCamZ = 0
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const onTouchStart = (e: TouchEvent) => {
       e.preventDefault()
       autoRotate = false
       if (e.touches.length === 1) {
-        isTouchDragging = true
-        touchHasDragged = false
-        touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-        touchRotStart = [...rotation]
+        touchDragged = false
+        touchPrev = { x: e.touches[0].clientX, y: e.touches[0].clientY }
       } else if (e.touches.length === 2) {
-        isTouchDragging = false
         const dx = e.touches[0].clientX - e.touches[1].clientX
         const dy = e.touches[0].clientY - e.touches[1].clientY
-        pinchStartDist = Math.hypot(dx, dy)
-        pinchStartScale = projection.scale()
+        pinchDist = Math.hypot(dx, dy)
+        pinchCamZ = camera.position.z
       }
     }
-
-    const handleTouchMove = (e: TouchEvent) => {
+    const onTouchMove = (e: TouchEvent) => {
       e.preventDefault()
-      if (e.touches.length === 1 && isTouchDragging) {
-        const dx = e.touches[0].clientX - touchStart.x
-        const dy = e.touches[0].clientY - touchStart.y
-        if (Math.hypot(dx, dy) > 5) touchHasDragged = true
-        rotation[0] = touchRotStart[0] + dx * 0.4
-        rotation[1] = Math.max(-90, Math.min(90, touchRotStart[1] - dy * 0.4))
-        projection.rotate(rotation)
-        render()
+      if (e.touches.length === 1) {
+        const dx = e.touches[0].clientX - touchPrev.x
+        const dy = e.touches[0].clientY - touchPrev.y
+        if (Math.hypot(dx, dy) > 4) touchDragged = true
+        globe.rotation.y += dx * 0.007
+        globe.rotation.x += dy * 0.007
+        globe.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, globe.rotation.x))
+        touchPrev = { x: e.touches[0].clientX, y: e.touches[0].clientY }
       } else if (e.touches.length === 2) {
         const dx = e.touches[0].clientX - e.touches[1].clientX
         const dy = e.touches[0].clientY - e.touches[1].clientY
         const dist = Math.hypot(dx, dy)
-        const newScale = Math.max(baseScale * 0.6, Math.min(baseScale * 5, pinchStartScale * (dist / pinchStartDist)))
-        projection.scale(newScale)
-        render()
+        camera.position.z = Math.max(1.4, Math.min(6, pinchCamZ * (pinchDist / dist)))
       }
     }
-
-    const handleTouchEnd = (e: TouchEvent) => {
+    const onTouchEnd = (e: TouchEvent) => {
       e.preventDefault()
-      if (e.touches.length === 0) {
-        // Tap to open article directly on mobile
-        if (!touchHasDragged && e.changedTouches.length === 1) {
-          const rect = canvas.getBoundingClientRect()
-          const mx = e.changedTouches[0].clientX - rect.left
-          const my = e.changedTouches[0].clientY - rect.top
-          const cx = w / 2
-          const cy = h / 2
-          const scale = projection.scale()
-          const zoom = scale / baseScale
-          const rotCenter = projection.rotate() as [number, number]
-
-          for (const item of newsRef.current) {
-            const angularDist = d3.geoDistance([item.lng, item.lat], [-rotCenter[0], -rotCenter[1]])
-            if (angularDist > Math.PI / 2) continue
-            const pos = projection([item.lng, item.lat])
-            if (!pos) continue
-            if (Math.hypot(pos[0] - cx, pos[1] - cy) > scale) continue
-            const dist = Math.hypot(pos[0] - mx, pos[1] - my)
-            if (dist < Math.max(16, 10 * zoom)) {
-              onClickRef.current?.(item)
-              break
-            }
-          }
-        }
-        isTouchDragging = false
-        setTimeout(() => { autoRotate = true }, 3000)
+      if (!touchDragged && e.changedTouches.length === 1) {
+        const hit = raycast(e.changedTouches[0].clientX, e.changedTouches[0].clientY)
+        if (hit) onClickRef.current?.(hit)
       }
+      setTimeout(() => { autoRotate = true }, 3000)
     }
 
-    canvas.addEventListener('mousedown', handleMouseDown)
-    canvas.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    canvas.addEventListener('wheel', handleWheel, { passive: false })
-    canvas.addEventListener('click', handleClick)
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false })
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false })
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: false })
-
-    loadData()
-
-    const newsInterval = setInterval(render, 2000)
-
-    const handleResize = () => {
-      const newIsMobile = window.innerWidth < 640
-      w = Math.min(width, window.innerWidth - (newIsMobile ? 0 : 24))
-      h = Math.min(height, window.innerHeight - (newIsMobile ? 180 : 100))
-      baseScale = Math.min(w, h) / 2.5
-      canvas.width = w * dpr
-      canvas.height = h * dpr
-      canvas.style.width = `${w}px`
-      canvas.style.height = `${h}px`
-      ctx.scale(dpr, dpr)
-      projection.translate([w / 2, h / 2])
-      projection.scale(baseScale)
-      render()
+    // ── Resize ────────────────────────────────────────────────────────────────
+    const onResize = () => {
+      if (!mount) return
+      const rw = mount.clientWidth
+      const rh = mount.clientHeight
+      camera.aspect = rw / rh
+      camera.updateProjectionMatrix()
+      renderer.setSize(rw, rh)
     }
-    window.addEventListener('resize', handleResize)
+    const ro = new ResizeObserver(onResize)
+    ro.observe(mount)
+
+    const el = renderer.domElement
+    el.addEventListener('mousedown', onMouseDown)
+    el.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    el.addEventListener('click', onClick)
+    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: false })
 
     return () => {
-      autoRotateAnim.stop()
-      clearInterval(newsInterval)
-      canvas.removeEventListener('mousedown', handleMouseDown)
-      canvas.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-      canvas.removeEventListener('wheel', handleWheel)
-      canvas.removeEventListener('click', handleClick)
-      canvas.removeEventListener('touchstart', handleTouchStart)
-      canvas.removeEventListener('touchmove', handleTouchMove)
-      canvas.removeEventListener('touchend', handleTouchEnd)
-      window.removeEventListener('resize', handleResize)
+      cancelAnimationFrame(animId)
+      ro.disconnect()
+      el.removeEventListener('mousedown', onMouseDown)
+      el.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      el.removeEventListener('click', onClick)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      renderer.dispose()
+      mount.removeChild(el)
+      sceneRef.current = null
     }
-  }, [width, height])
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center bg-neutral-900 rounded-2xl p-8">
-        <div className="text-center">
-          <p className="text-red-400 font-semibold mb-2">Error loading Earth visualization</p>
-          <p className="text-neutral-400 text-sm">{error}</p>
-        </div>
-      </div>
-    )
-  }
+  }, [])
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      <canvas
-        ref={canvasRef}
-        className="rounded-2xl bg-black cursor-grab active:cursor-grabbing touch-none"
-        style={{ maxWidth: '100%', maxHeight: '100%' }}
-      />
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black">
-          <div className="text-neutral-400 text-sm animate-pulse">Loading world map...</div>
-        </div>
-      )}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 sm:left-4 sm:translate-x-0 text-xs text-neutral-400 px-3 py-1.5 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-neutral-700/50 pointer-events-none whitespace-nowrap">
-        <span className="hidden sm:inline">Drag to rotate • Scroll to zoom • Click dots for article</span>
-        <span className="sm:hidden">Drag to rotate • Pinch to zoom • Tap dots</span>
+    <div className="relative w-full h-full">
+      <div ref={mountRef} className="w-full h-full touch-none" />
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-neutral-400 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm border border-neutral-700/50 pointer-events-none whitespace-nowrap">
+        <span className="hidden sm:inline">Drag to rotate · Scroll to zoom · Click a dot for article</span>
+        <span className="sm:hidden">Drag to rotate · Pinch to zoom · Tap a dot</span>
       </div>
     </div>
   )
