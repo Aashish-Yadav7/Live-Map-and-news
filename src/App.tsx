@@ -93,7 +93,13 @@ export default function App() {
               <p className="text-xs text-blue-400 mt-2">Tap to open article</p>
             </div>
           )}
-          {error && (
+          {error && error.includes('GNEWS_API_KEY') && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-amber-950/80 border border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-200 flex items-center gap-2 max-w-md">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>News API key not set. Add GNEWS_API_KEY in Supabase secrets to load real news.</span>
+            </div>
+          )}
+          {error && !error.includes('GNEWS_API_KEY') && (
             <div className="absolute top-4 right-4 bg-red-950/80 border border-red-800 rounded-lg px-4 py-2 text-sm text-red-300 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
               <span>Failed to load news: {error}</span>
