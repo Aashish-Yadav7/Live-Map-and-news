@@ -120,27 +120,29 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
     mount.appendChild(renderer.domElement)
 
     // ── Lighting ──────────────────────────────────────────────────────────────
-    // Matches reference photo: strong warm sun from upper-right, soft fill from opposite side
+    // Soft even ambient to avoid dark patches, two gentle fill lights — no plastic hotspot
     const sunDir = new THREE.Vector3(4, 2.5, 3).normalize()
 
-    const ambient = new THREE.AmbientLight(0x223355, 0.4)
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8)
     scene.add(ambient)
 
-    const sun = new THREE.DirectionalLight(0xfff8e8, 1.6)
+    // Gentle directional for day/night shading — low intensity so no specular flash
+    const sun = new THREE.DirectionalLight(0xfff5dd, 0.55)
     sun.position.copy(sunDir.clone().multiplyScalar(10))
     scene.add(sun)
 
-    // Very soft cold fill from the night side
-    const fill = new THREE.DirectionalLight(0x334466, 0.18)
+    // Soft cool fill from opposite side
+    const fill = new THREE.DirectionalLight(0x8ab4cc, 0.2)
     fill.position.set(-6, -2, -4)
     scene.add(fill)
 
     // ── Globe ─────────────────────────────────────────────────────────────────
     const globeGeo = new THREE.SphereGeometry(1, 128, 128)
-    const globeMat = new THREE.MeshPhongMaterial({
-      color: 0x1a4d80,  // fallback ocean while texture loads
-      shininess: 60,
-      specular: new THREE.Color(0x224488),
+    // MeshStandardMaterial (PBR) with roughness=1 → fully matte, zero plastic sheen
+    const globeMat = new THREE.MeshStandardMaterial({
+      color: 0x1a4d80,
+      roughness: 1.0,
+      metalness: 0.0,
     })
     const globe = new THREE.Mesh(globeGeo, globeMat)
     // Slight tilt to match reference photo
@@ -176,11 +178,10 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
     }
     tryLoadTexture(0)
 
-    // Specular map (oceans reflect sunlight, land does not)
+    // Roughness map — makes oceans slightly smoother than land (subtle, not plastic)
     loader.load('https://unpkg.com/three-globe@2.31.1/example/img/earth-water.png', (tex) => {
-      globeMat.specularMap = tex
-      globeMat.specular = new THREE.Color(0x446688)
-      globeMat.shininess = 80
+      globeMat.roughnessMap = tex
+      globeMat.roughness = 0.92
       globeMat.needsUpdate = true
     })
 
@@ -191,13 +192,14 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
       globeMat.needsUpdate = true
     })
 
-    // Cloud layer — semi-transparent sphere slightly above surface
+    // Cloud layer — matte MeshStandardMaterial matches the globe
     const cloudGeo = new THREE.SphereGeometry(1.006, 64, 64)
-    const cloudMat = new THREE.MeshPhongMaterial({
+    const cloudMat = new THREE.MeshStandardMaterial({
       transparent: true,
-      opacity: 0.0,  // starts hidden until texture loads
+      opacity: 0.0,
+      roughness: 1.0,
+      metalness: 0.0,
       depthWrite: false,
-      side: THREE.FrontSide,
     })
     const clouds = new THREE.Mesh(cloudGeo, cloudMat)
     globe.add(clouds)
@@ -205,7 +207,7 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
       tex.colorSpace = THREE.SRGBColorSpace
       cloudMat.alphaMap = tex
       cloudMat.color.set(0xffffff)
-      cloudMat.opacity = 0.9
+      cloudMat.opacity = 0.88
       cloudMat.needsUpdate = true
     })
 

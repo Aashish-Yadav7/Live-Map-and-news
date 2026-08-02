@@ -17,371 +17,359 @@ interface NewsItem {
   summary: string;
 }
 
-// Major world cities for geo-coding news by keyword matching
-const cityCoords: Record<string, { lat: number; lng: number }> = {
-  "new york": { lat: 40.71, lng: -74.01 },
-  "los angeles": { lat: 34.05, lng: -118.24 },
-  "london": { lat: 51.51, lng: -0.13 },
-  "paris": { lat: 48.85, lng: 2.35 },
-  "tokyo": { lat: 35.68, lng: 139.69 },
-  "beijing": { lat: 39.90, lng: 116.40 },
-  "mumbai": { lat: 19.08, lng: 72.88 },
-  "delhi": { lat: 28.61, lng: 77.21 },
-  "sydney": { lat: -33.87, lng: 151.21 },
-  "moscow": { lat: 55.76, lng: 37.62 },
-  "berlin": { lat: 52.52, lng: 13.40 },
-  "cairo": { lat: 30.04, lng: 31.24 },
-  "são paulo": { lat: -23.55, lng: -46.63 },
-  "rio de janeiro": { lat: -22.91, lng: -43.17 },
-  "mexico city": { lat: 19.43, lng: -99.13 },
-  "lagos": { lat: 6.52, lng: 3.38 },
-  "istanbul": { lat: 41.01, lng: 28.98 },
-  "singapore": { lat: 1.35, lng: 103.82 },
-  "dubai": { lat: 25.20, lng: 55.27 },
-  "toronto": { lat: 43.65, lng: -79.38 },
-  "seoul": { lat: 37.57, lng: 126.98 },
-  "buenos aires": { lat: -34.61, lng: -58.38 },
-  "jakarta": { lat: -6.21, lng: 106.85 },
-  "bangkok": { lat: 13.76, lng: 100.50 },
-  "madrid": { lat: 40.42, lng: -3.70 },
-  "nairobi": { lat: -1.29, lng: 36.82 },
-  "riyadh": { lat: 24.71, lng: 46.68 },
-  "amsterdam": { lat: 52.37, lng: 4.90 },
-  "vienna": { lat: 48.21, lng: 16.37 },
-  "athens": { lat: 37.98, lng: 23.73 },
-  "lisbon": { lat: 38.72, lng: -9.14 },
-  "warsaw": { lat: 52.23, lng: 21.01 },
-  "prague": { lat: 50.08, lng: 14.44 },
-  "budapest": { lat: 47.50, lng: 19.04 },
-  "dublin": { lat: 53.35, lng: -6.26 },
-  "brussels": { lat: 50.85, lng: 4.35 },
-  "zurich": { lat: 47.37, lng: 8.55 },
-  "manila": { lat: 14.60, lng: 120.98 },
-  "hanoi": { lat: 21.03, lng: 105.85 },
-  "kuala lumpur": { lat: 3.14, lng: 101.69 },
-  "vancouver": { lat: 49.28, lng: -123.12 },
-  "montreal": { lat: 45.50, lng: -73.57 },
-  "chicago": { lat: 41.88, lng: -87.63 },
-  "houston": { lat: 29.76, lng: -95.37 },
-  "miami": { lat: 25.76, lng: -80.19 },
-  "seattle": { lat: 47.61, lng: -122.33 },
-  "san francisco": { lat: 37.77, lng: -122.42 },
-  "washington": { lat: 38.90, lng: -77.04 },
-  "boston": { lat: 42.36, lng: -71.06 },
-  "atlanta": { lat: 33.75, lng: -84.39 },
-  "dallas": { lat: 32.78, lng: -96.80 },
-  "phoenix": { lat: 33.45, lng: -112.07 },
-  "philadelphia": { lat: 39.95, lng: -75.17 },
-  "tel aviv": { lat: 32.08, lng: 34.78 },
-  "tehran": { lat: 35.69, lng: 51.39 },
-  "baghdad": { lat: 33.31, lng: 44.36 },
-  "karachi": { lat: 24.86, lng: 67.01 },
-  "dhaka": { lat: 23.81, lng: 90.41 },
-  "shanghai": { lat: 31.23, lng: 121.47 },
-  "hong kong": { lat: 22.32, lng: 114.17 },
-  "taipei": { lat: 25.03, lng: 121.57 },
-  "osaka": { lat: 34.69, lng: 135.50 },
-  "melbourne": { lat: -37.81, lng: 144.96 },
-  "cape town": { lat: -33.92, lng: 18.42 },
-  "johannesburg": { lat: -26.20, lng: 28.05 },
-  "nairobi": { lat: -1.29, lng: 36.82 },
-  "casablanca": { lat: 33.57, lng: -7.59 },
-  "algiers": { lat: 36.75, lng: 3.06 },
-  "helsinki": { lat: 60.17, lng: 24.94 },
-  "oslo": { lat: 59.91, lng: 10.75 },
-  "stockholm": { lat: 59.33, lng: 18.07 },
-  "copenhagen": { lat: 55.68, lng: 12.57 },
-  "doha": { lat: 25.29, lng: 51.53 },
-  "kuwait city": { lat: 29.38, lng: 47.97 },
-  "bogotá": { lat: 4.71, lng: -74.07 },
-  "lima": { lat: -12.05, lng: -77.04 },
-  "santiago": { lat: -33.45, lng: -70.67 },
-  "havana": { lat: 23.13, lng: -82.36 },
-  "panama city": { lat: 8.98, lng: -79.52 },
-  "kiev": { lat: 50.45, lng: 30.52 },
-  "kyiv": { lat: 50.45, lng: 30.52 },
-  "minsk": { lat: 53.90, lng: 27.57 },
-  "bucharest": { lat: 44.43, lng: 26.10 },
-  "sofia": { lat: 42.70, lng: 23.32 },
-  "belgrade": { lat: 44.79, lng: 20.46 },
-  "zagreb": { lat: 45.81, lng: 15.98 },
-  "reykjavik": { lat: 64.13, lng: -21.94 },
-  "wellington": { lat: -41.29, lng: 174.78 },
-  "auckland": { lat: -36.85, lng: 174.76 },
-  "perth": { lat: -31.95, lng: 115.86 },
-  "brisbane": { lat: -27.47, lng: 153.02 },
-  "adelaide": { lat: -34.93, lng: 138.60 },
-  "kabul": { lat: 34.53, lng: 69.17 },
-  "damascus": { lat: 33.51, lng: 36.29 },
-  "beirut": { lat: 33.89, lng: 35.50 },
-  "amman": { lat: 31.95, lng: 35.91 },
-  "baku": { lat: 40.37, lng: 49.84 },
-  "tbilisi": { lat: 41.69, lng: 44.83 },
-  "almaty": { lat: 43.22, lng: 76.85 },
-  "tashkent": { lat: 41.31, lng: 69.24 },
-  "ulaanbaatar": { lat: 47.92, lng: 106.92 },
-  "kathmandu": { lat: 27.71, lng: 85.32 },
-  "colombo": { lat: 6.93, lng: 79.86 },
-  "yangon": { lat: 16.84, lng: 96.17 },
-  "phnom penh": { lat: 11.56, lng: 104.93 },
-  "chicago": { lat: 41.88, lng: -87.63 },
-  "detroit": { lat: 42.33, lng: -83.05 },
-  "san diego": { lat: 32.72, lng: -117.16 },
-  "portland": { lat: 45.52, lng: -122.67 },
-  "las vegas": { lat: 36.17, lng: -115.14 },
-  "barcelona": { lat: 41.39, lng: 2.17 },
-  "milan": { lat: 45.46, lng: 9.19 },
-  "rome": { lat: 41.90, lng: 12.50 },
-  "naples": { lat: 40.85, lng: 14.27 },
-  "hamburg": { lat: 53.55, lng: 9.99 },
-  "munich": { lat: 48.14, lng: 11.58 },
-  "frankfurt": { lat: 50.11, lng: 8.68 },
-  "glasgow": { lat: 55.86, lng: -4.25 },
-  "manchester": { lat: 53.48, lng: -2.24 },
-  "edinburgh": { lat: 55.95, lng: -3.19 },
-  "birmingham": { lat: 52.49, lng: -1.90 },
-  "liverpool": { lat: 53.41, lng: -2.99 },
-  "lyon": { lat: 45.76, lng: 4.84 },
-  "marseille": { lat: 43.30, lng: 5.37 },
-  "nice": { lat: 43.70, lng: 7.26 },
-  "valencia": { lat: 39.47, lng: -0.38 },
-  "seville": { lat: 37.39, lng: -5.98 },
-  "porto": { lat: 41.16, lng: -8.61 },
-  "rotterdam": { lat: 51.92, lng: 4.48 },
-  "antwerp": { lat: 51.22, lng: 4.40 },
-  "geneva": { lat: 46.20, lng: 6.14 },
-  "florence": { lat: 43.77, lng: 11.25 },
-  "venice": { lat: 45.44, lng: 12.32 },
-  "krakow": { lat: 50.06, lng: 19.94 },
-  "st petersburg": { lat: 59.93, lng: 30.34 },
-  "yekaterinburg": { lat: 56.84, lng: 60.61 },
-  "novosibirsk": { lat: 55.00, lng: 82.93 },
-  "vladivostok": { lat: 43.12, lng: 131.89 },
-  "chennai": { lat: 13.08, lng: 80.27 },
-  "kolkata": { lat: 22.57, lng: 88.36 },
-  "bengaluru": { lat: 12.97, lng: 77.59 },
-  "hyderabad": { lat: 17.39, lng: 78.49 },
-  "ahmedabad": { lat: 23.03, lng: 72.58 },
-  "pune": { lat: 18.52, lng: 73.85 },
-  "jaipur": { lat: 26.91, lng: 75.79 },
-  "lahore": { lat: 31.55, lng: 74.34 },
-  "karachi": { lat: 24.86, lng: 67.01 },
-  "islamabad": { lat: 33.68, lng: 73.05 },
-  "chongqing": { lat: 29.43, lng: 106.91 },
-  "guangzhou": { lat: 23.13, lng: 113.26 },
-  "shenzhen": { lat: 22.54, lng: 114.06 },
-  "chengdu": { lat: 30.57, lng: 104.07 },
-  "wuhan": { lat: 30.59, lng: 114.31 },
-  "nanjing": { lat: 32.06, lng: 118.80 },
-  "hangzhou": { lat: 30.27, lng: 120.15 },
-  "qingdao": { lat: 36.07, lng: 120.38 },
-  "harbin": { lat: 45.80, lng: 126.53 },
-  "fukuoka": { lat: 33.59, lng: 130.40 },
-  "sapporo": { lat: 43.06, lng: 141.35 },
-  "busan": { lat: 35.18, lng: 129.08 },
-  "incheon": { lat: 37.46, lng: 126.70 },
-  "bandung": { lat: -6.91, lng: 107.61 },
-  "surabaya": { lat: -7.0, lng: 112.75 },
-  "medan": { lat: 3.59, lng: 98.67 },
-  "chittagong": { lat: 22.34, lng: 91.82 },
-  "tehran": { lat: 35.69, lng: 51.39 },
-  "riyadh": { lat: 24.71, lng: 46.68 },
-  "jeddah": { lat: 21.49, lng: 39.19 },
-  "muscat": { lat: 23.59, lng: 58.38 },
-  "sanaa": { lat: 15.37, lng: 44.19 },
-  "addis ababa": { lat: 9.03, lng: 38.74 },
-  "kampala": { lat: 0.35, lng: 32.57 },
-  "dar es salaam": { lat: -6.82, lng: 39.28 },
-  "accra": { lat: 5.60, lng: -0.19 },
-  "dakar": { lat: 14.72, lng: -17.45 },
-  "abidjan": { lat: 5.36, lng: -4.01 },
-  "maputo": { lat: -25.97, lng: 32.57 },
-  "harare": { lat: -17.83, lng: 31.05 },
-  "luanda": { lat: -8.84, lng: 13.29 },
-  "windhoek": { lat: -22.56, lng: 17.08 },
-  "pretoria": { lat: -25.74, lng: 28.19 },
-  "durban": { lat: -29.86, lng: 31.03 },
-  "antananarivo": { lat: -18.88, lng: 47.52 },
-  "hobart": { lat: -42.88, lng: 147.33 },
-  "darwin": { lat: -12.46, lng: 130.84 },
-};
+// ── Geo-coding tables ─────────────────────────────────────────────────────────
 
-// Country name to approximate capital coordinates (fallback when city not found)
-const countryCoords: Record<string, { lat: number; lng: number }> = {
-  "united states": { lat: 39.0, lng: -98.0 },
-  "uk": { lat: 54.0, lng: -2.0 },
-  "united kingdom": { lat: 54.0, lng: -2.0 },
-  "russia": { lat: 61.0, lng: 90.0 },
-  "china": { lat: 35.0, lng: 104.0 },
-  "india": { lat: 22.0, lng: 79.0 },
-  "japan": { lat: 36.0, lng: 138.0 },
-  "germany": { lat: 51.0, lng: 10.0 },
-  "france": { lat: 46.0, lng: 2.0 },
-  "brazil": { lat: -10.0, lng: -55.0 },
-  "canada": { lat: 56.0, lng: -106.0 },
-  "australia": { lat: -25.0, lng: 134.0 },
-  "mexico": { lat: 23.0, lng: -102.0 },
-  "south korea": { lat: 36.0, lng: 128.0 },
-  "indonesia": { lat: -2.0, lng: 118.0 },
-  "turkey": { lat: 39.0, lng: 35.0 },
-  "saudi arabia": { lat: 24.0, lng: 45.0 },
-  "south africa": { lat: -30.0, lng: 24.0 },
-  "nigeria": { lat: 9.0, lng: 8.0 },
-  "egypt": { lat: 27.0, lng: 30.0 },
-  "iran": { lat: 32.0, lng: 53.0 },
-  "pakistan": { lat: 30.0, lng: 70.0 },
-  "bangladesh": { lat: 24.0, lng: 90.0 },
-  "vietnam": { lat: 16.0, lng: 108.0 },
-  "philippines": { lat: 13.0, lng: 122.0 },
-  "thailand": { lat: 15.0, lng: 101.0 },
-  "malaysia": { lat: 4.0, lng: 102.0 },
-  "singapore": { lat: 1.35, lng: 103.82 },
-  "spain": { lat: 40.0, lng: -4.0 },
-  "italy": { lat: 42.0, lng: 12.0 },
-  "netherlands": { lat: 52.0, lng: 5.0 },
-  "sweden": { lat: 62.0, lng: 15.0 },
-  "norway": { lat: 62.0, lng: 10.0 },
-  "finland": { lat: 64.0, lng: 26.0 },
-  "denmark": { lat: 56.0, lng: 9.0 },
-  "poland": { lat: 52.0, lng: 19.0 },
-  "ukraine": { lat: 49.0, lng: 32.0 },
-  "argentina": { lat: -34.0, lng: -64.0 },
-  "chile": { lat: -35.0, lng: -71.0 },
-  "colombia": { lat: 4.0, lng: -73.0 },
-  "peru": { lat: -10.0, lng: -76.0 },
-  "israel": { lat: 31.0, lng: 35.0 },
-  "iraq": { lat: 33.0, lng: 44.0 },
-  "afghanistan": { lat: 34.0, lng: 67.0 },
-  "kenya": { lat: 0.0, lng: 38.0 },
-  "ethiopia": { lat: 9.0, lng: 40.0 },
-  "morocco": { lat: 32.0, lng: -6.0 },
-  "algeria": { lat: 28.0, lng: 2.0 },
-  "greece": { lat: 39.0, lng: 22.0 },
-  "portugal": { lat: 39.0, lng: -8.0 },
-  "austria": { lat: 47.0, lng: 14.0 },
-  "switzerland": { lat: 47.0, lng: 8.0 },
-  "belgium": { lat: 50.0, lng: 4.0 },
-  "ireland": { lat: 53.0, lng: -8.0 },
-  "czech republic": { lat: 49.0, lng: 16.0 },
-  "romania": { lat: 46.0, lng: 24.0 },
-  "hungary": { lat: 47.0, lng: 19.0 },
-  "new zealand": { lat: -42.0, lng: 174.0 },
-  "uae": { lat: 24.0, lng: 54.0 },
-  "qatar": { lat: 25.0, lng: 51.0 },
-  "kuwait": { lat: 29.0, lng: 47.0 },
-};
+const CITIES: [string, number, number][] = [
+  // [name, lat, lng] — longer names first for better specificity
+  ["new york city", 40.71, -74.01], ["new york", 40.71, -74.01],
+  ["los angeles", 34.05, -118.24], ["san francisco", 37.77, -122.42],
+  ["washington dc", 38.90, -77.04], ["washington", 38.90, -77.04],
+  ["chicago", 41.88, -87.63], ["houston", 29.76, -95.37],
+  ["miami", 25.76, -80.19], ["boston", 42.36, -71.06],
+  ["seattle", 47.61, -122.33], ["atlanta", 33.75, -84.39],
+  ["dallas", 32.78, -96.80], ["phoenix", 33.45, -112.07],
+  ["philadelphia", 39.95, -75.17], ["san diego", 32.72, -117.16],
+  ["las vegas", 36.17, -115.14], ["portland", 45.52, -122.67],
+  ["detroit", 42.33, -83.05], ["minneapolis", 44.98, -93.27],
+  ["denver", 39.74, -104.98], ["baltimore", 39.29, -76.61],
+  ["kansas city", 39.10, -94.58], ["nashville", 36.16, -86.78],
+  ["london", 51.51, -0.13], ["paris", 48.85, 2.35],
+  ["berlin", 52.52, 13.40], ["madrid", 40.42, -3.70],
+  ["barcelona", 41.39, 2.17], ["rome", 41.90, 12.50],
+  ["milan", 45.46, 9.19], ["amsterdam", 52.37, 4.90],
+  ["brussels", 50.85, 4.35], ["vienna", 48.21, 16.37],
+  ["zurich", 47.37, 8.55], ["geneva", 46.20, 6.14],
+  ["stockholm", 59.33, 18.07], ["oslo", 59.91, 10.75],
+  ["helsinki", 60.17, 24.94], ["copenhagen", 55.68, 12.57],
+  ["dublin", 53.35, -6.26], ["lisbon", 38.72, -9.14],
+  ["athens", 37.98, 23.73], ["warsaw", 52.23, 21.01],
+  ["prague", 50.08, 14.44], ["budapest", 47.50, 19.04],
+  ["bucharest", 44.43, 26.10], ["kyiv", 50.45, 30.52],
+  ["kiev", 50.45, 30.52], ["moscow", 55.76, 37.62],
+  ["st. petersburg", 59.93, 30.34], ["st petersburg", 59.93, 30.34],
+  ["minsk", 53.90, 27.57], ["belgrade", 44.79, 20.46],
+  ["zagreb", 45.81, 15.98], ["sofia", 42.70, 23.32],
+  ["frankfurt", 50.11, 8.68], ["hamburg", 53.55, 9.99],
+  ["munich", 48.14, 11.58], ["glasgow", 55.86, -4.25],
+  ["manchester", 53.48, -2.24], ["birmingham", 52.49, -1.90],
+  ["liverpool", 53.41, -2.99], ["edinburgh", 55.95, -3.19],
+  ["lyon", 45.76, 4.84], ["marseille", 43.30, 5.37],
+  ["naples", 40.85, 14.27], ["venice", 45.44, 12.32],
+  ["florence", 43.77, 11.25], ["rotterdam", 51.92, 4.48],
+  ["tokyo", 35.68, 139.69], ["osaka", 34.69, 135.50],
+  ["sapporo", 43.06, 141.35], ["fukuoka", 33.59, 130.40],
+  ["beijing", 39.90, 116.40], ["shanghai", 31.23, 121.47],
+  ["guangzhou", 23.13, 113.26], ["shenzhen", 22.54, 114.06],
+  ["hong kong", 22.32, 114.17], ["chengdu", 30.57, 104.07],
+  ["wuhan", 30.59, 114.31], ["chongqing", 29.43, 106.91],
+  ["nanjing", 32.06, 118.80], ["xi'an", 34.27, 108.95],
+  ["taipei", 25.03, 121.57], ["seoul", 37.57, 126.98],
+  ["busan", 35.18, 129.08], ["incheon", 37.46, 126.70],
+  ["mumbai", 19.08, 72.88], ["delhi", 28.61, 77.21],
+  ["new delhi", 28.61, 77.21], ["bangalore", 12.97, 77.59],
+  ["bengaluru", 12.97, 77.59], ["hyderabad", 17.39, 78.49],
+  ["chennai", 13.08, 80.27], ["kolkata", 22.57, 88.36],
+  ["ahmedabad", 23.03, 72.58], ["pune", 18.52, 73.85],
+  ["jaipur", 26.91, 75.79],
+  ["sydney", -33.87, 151.21], ["melbourne", -37.81, 144.96],
+  ["brisbane", -27.47, 153.02], ["perth", -31.95, 115.86],
+  ["adelaide", -34.93, 138.60], ["auckland", -36.85, 174.76],
+  ["wellington", -41.29, 174.78],
+  ["toronto", 43.65, -79.38], ["montreal", 45.50, -73.57],
+  ["vancouver", 49.28, -123.12], ["calgary", 51.05, -114.06],
+  ["mexico city", 19.43, -99.13], ["guadalajara", 20.68, -103.35],
+  ["sao paulo", -23.55, -46.63], ["são paulo", -23.55, -46.63],
+  ["rio de janeiro", -22.91, -43.17], ["brasilia", -15.78, -47.93],
+  ["buenos aires", -34.61, -58.38], ["santiago", -33.45, -70.67],
+  ["bogota", 4.71, -74.07], ["bogotá", 4.71, -74.07],
+  ["lima", -12.05, -77.04], ["caracas", 10.49, -66.88],
+  ["havana", 23.13, -82.36],
+  ["istanbul", 41.01, 28.98], ["ankara", 39.92, 32.85],
+  ["dubai", 25.20, 55.27], ["abu dhabi", 24.47, 54.37],
+  ["riyadh", 24.71, 46.68], ["jeddah", 21.49, 39.19],
+  ["doha", 25.29, 51.53], ["kuwait city", 29.38, 47.97],
+  ["muscat", 23.59, 58.38], ["tel aviv", 32.08, 34.78],
+  ["jerusalem", 31.78, 35.22], ["amman", 31.95, 35.91],
+  ["beirut", 33.89, 35.50], ["damascus", 33.51, 36.29],
+  ["baghdad", 33.31, 44.36], ["tehran", 35.69, 51.39],
+  ["cairo", 30.04, 31.24], ["alexandria", 31.20, 29.92],
+  ["lagos", 6.52, 3.38], ["abuja", 9.07, 7.40],
+  ["nairobi", -1.29, 36.82], ["addis ababa", 9.03, 38.74],
+  ["johannesburg", -26.20, 28.05], ["cape town", -33.92, 18.42],
+  ["pretoria", -25.74, 28.19], ["durban", -29.86, 31.03],
+  ["dar es salaam", -6.82, 39.28], ["kampala", 0.35, 32.57],
+  ["accra", 5.60, -0.19], ["dakar", 14.72, -17.45],
+  ["casablanca", 33.57, -7.59], ["algiers", 36.75, 3.06],
+  ["tunis", 36.82, 10.17],
+  ["singapore", 1.35, 103.82], ["kuala lumpur", 3.14, 101.69],
+  ["jakarta", -6.21, 106.85], ["bangkok", 13.76, 100.50],
+  ["hanoi", 21.03, 105.85], ["ho chi minh", 10.82, 106.63],
+  ["manila", 14.60, 120.98], ["yangon", 16.84, 96.17],
+  ["phnom penh", 11.56, 104.93], ["dhaka", 23.81, 90.41],
+  ["karachi", 24.86, 67.01], ["lahore", 31.55, 74.34],
+  ["islamabad", 33.68, 73.05], ["kabul", 34.53, 69.17],
+  ["kathmandu", 27.71, 85.32], ["colombo", 6.93, 79.86],
+  ["baku", 40.37, 49.84], ["tbilisi", 41.69, 44.83],
+  ["yerevan", 40.18, 44.51], ["tashkent", 41.31, 69.24],
+  ["almaty", 43.22, 76.85], ["astana", 51.19, 71.45],
+  ["ulaanbaatar", 47.92, 106.92], ["vladivostok", 43.12, 131.89],
+  ["novosibirsk", 55.00, 82.93],
+  ["reykjavik", 64.13, -21.94],
+];
+
+// Countries — requires word-boundary match to avoid false positives (e.g. "iran" inside "ukrainIAN")
+const COUNTRIES: [string, number, number][] = [
+  ["united states", 39.0, -98.0], ["united kingdom", 54.0, -2.0],
+  ["united arab emirates", 24.0, 54.0],
+  ["russia", 61.0, 90.0], ["china", 35.0, 104.0],
+  ["india", 22.0, 79.0], ["japan", 36.0, 138.0],
+  ["germany", 51.0, 10.0], ["france", 46.0, 2.0],
+  ["brazil", -10.0, -55.0], ["canada", 56.0, -106.0],
+  ["australia", -25.0, 134.0], ["mexico", 23.0, -102.0],
+  ["south korea", 36.0, 128.0], ["north korea", 40.0, 127.0],
+  ["indonesia", -2.0, 118.0], ["turkey", 39.0, 35.0],
+  ["saudi arabia", 24.0, 45.0], ["south africa", -30.0, 24.0],
+  ["nigeria", 9.0, 8.0], ["egypt", 27.0, 30.0],
+  ["iran", 32.0, 53.0], ["iraq", 33.0, 44.0],
+  ["pakistan", 30.0, 70.0], ["bangladesh", 24.0, 90.0],
+  ["vietnam", 16.0, 108.0], ["philippines", 13.0, 122.0],
+  ["thailand", 15.0, 101.0], ["malaysia", 4.0, 102.0],
+  ["spain", 40.0, -4.0], ["italy", 42.0, 12.0],
+  ["netherlands", 52.0, 5.0], ["sweden", 62.0, 15.0],
+  ["norway", 62.0, 10.0], ["finland", 64.0, 26.0],
+  ["denmark", 56.0, 9.0], ["poland", 52.0, 19.0],
+  ["ukraine", 49.0, 32.0], ["argentina", -34.0, -64.0],
+  ["chile", -35.0, -71.0], ["colombia", 4.0, -73.0],
+  ["peru", -10.0, -76.0], ["israel", 31.0, 35.0],
+  ["afghanistan", 34.0, 67.0], ["kenya", 0.0, 38.0],
+  ["ethiopia", 9.0, 40.0], ["morocco", 32.0, -6.0],
+  ["algeria", 28.0, 2.0], ["greece", 39.0, 22.0],
+  ["portugal", 39.0, -8.0], ["austria", 47.0, 14.0],
+  ["switzerland", 47.0, 8.0], ["belgium", 50.0, 4.0],
+  ["ireland", 53.0, -8.0], ["czech", 49.0, 16.0],
+  ["romania", 46.0, 24.0], ["hungary", 47.0, 19.0],
+  ["new zealand", -42.0, 174.0], ["qatar", 25.0, 51.0],
+  ["kuwait", 29.0, 47.0], ["taiwan", 23.5, 121.0],
+  ["myanmar", 17.0, 96.0], ["cambodia", 12.0, 105.0],
+  ["nepal", 28.0, 84.0], ["sri lanka", 7.0, 81.0],
+  ["georgia", 42.0, 43.5], ["armenia", 40.0, 45.0],
+  ["azerbaijan", 40.0, 47.5], ["syria", 35.0, 38.0],
+  ["lebanon", 33.9, 35.5], ["jordan", 31.0, 36.0],
+  ["yemen", 15.0, 48.0], ["oman", 22.0, 57.0],
+  ["bahrain", 26.0, 50.5], ["libya", 27.0, 17.0],
+  ["tunisia", 34.0, 9.0], ["sudan", 15.0, 30.0],
+  ["somalia", 6.0, 46.0], ["ghana", 8.0, -1.0],
+  ["cameroon", 6.0, 12.0], ["senegal", 14.0, -14.0],
+  ["tanzania", -6.0, 35.0], ["uganda", 1.0, 32.0],
+  ["zimbabwe", -20.0, 30.0], ["mozambique", -18.0, 35.0],
+  ["angola", -12.0, 18.0], ["zambia", -13.0, 30.0],
+  ["kazakh", 48.0, 68.0], ["uzbek", 41.0, 64.0],
+];
 
 function findCoords(text: string): { lat: number; lng: number } | null {
   const lower = text.toLowerCase();
-  // Try city match first (longer names first for specificity)
-  const cityNames = Object.keys(cityCoords).sort((a, b) => b.length - a.length);
-  for (const city of cityNames) {
-    if (lower.includes(city)) return cityCoords[city];
+  // Cities: sorted longest-first for specificity (already ordered above)
+  for (const [name, lat, lng] of CITIES) {
+    if (lower.includes(name)) return { lat, lng };
   }
-  // Try country match
-  for (const country of Object.keys(countryCoords)) {
-    if (lower.includes(country)) return countryCoords[country];
+  // Countries: use word-boundary match to avoid false positives
+  for (const [name, lat, lng] of COUNTRIES) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b${escaped}\\b`, "i").test(lower)) return { lat, lng };
   }
   return null;
 }
 
 function categorize(text: string): "accident" | "research" {
   const lower = text.toLowerCase();
-  const accidentWords = [
-    "accident", "crash", "collision", "fire", "explosion", "flood", "earthquake",
-    "storm", "hurricane", "eruption", "attack", "blast", "wreck", "derail",
-    "collapse", "landslide", "tsunami", "tornado", "wildfire", "casualt",
-    "dead", "killed", "injured", "wounded", "disaster", "emergency", "evacuat",
-    "outage", "leak", "spill", "crisis", "violence", "shooting", "bomb",
-    "strike", "protest", "clash", "raid", "siege", "hostage",
-  ];
-  const researchWords = [
-    "research", "study", "science", "technology", "ai", "quantum", "space",
-    "satellite", "launch", "discovery", "innovation", "breakthrough", "lab",
-    "university", "scientists", "medical", "treatment", "vaccine", "genome",
-    "robotics", "battery", "solar", "hydrogen", "fusion", "biotech", "nanotech",
-    "climate study", "renewable", "carbon capture", "deep-sea", "neuroscience",
-  ];
-  let accScore = 0;
-  let resScore = 0;
-  for (const w of accidentWords) if (lower.includes(w)) accScore++;
-  for (const w of researchWords) if (lower.includes(w)) resScore++;
-  return accScore >= resScore ? "accident" : "research";
+  let acc = 0, res = 0;
+  for (const w of ["accident","crash","collision","fire","explosion","flood","earthquake","storm","hurricane","eruption","attack","blast","derail","collapse","landslide","tsunami","tornado","wildfire","dead","killed","injured","wounded","disaster","emergency","evacuat","shooting","bomb","conflict","war","battle","airstrike","strike","siege","hostage","drought","famine","chemical","nuclear","fallout"]) {
+    if (lower.includes(w)) acc++;
+  }
+  for (const w of ["research","study","science","technology"," ai ","artificial intelligence","quantum","space","satellite","launch","discovery","innovation","breakthrough","laboratory","university","scientists","medical","treatment","vaccine","genome","robotics","solar","fusion","biotech","nanotech","climate","renewable","carbon","neuroscience","telescope","probe","experiment","trial"]) {
+    if (lower.includes(w)) res++;
+  }
+  return acc >= res ? "accident" : "research";
 }
+
+function processArticle(
+  title: string,
+  description: string,
+  url: string,
+  sourceName: string,
+  publishedAt: string
+): NewsItem | null {
+  if (!title || !url || !url.startsWith("http")) return null;
+  // Reject generic search-engine links
+  if (url.includes("google.com/search") || url.includes("bing.com/search")) return null;
+  const geoText = `${title} ${description} ${sourceName}`;
+  const coords = findCoords(geoText);
+  if (!coords) return null;
+  return {
+    title: title.trim(),
+    source: sourceName,
+    url,
+    lat: coords.lat,
+    lng: coords.lng,
+    category: categorize(`${title} ${description}`),
+    publishedAt: publishedAt || new Date().toISOString(),
+    summary: description ? description.slice(0, 300) : "",
+  };
+}
+
+// ── API fetchers ──────────────────────────────────────────────────────────────
+
+async function fetchGNews(apiKey: string): Promise<NewsItem[]> {
+  // GNews v4 uses "token" param (NOT "apikey") — free tier: 100 req/day, 10 articles/req
+  const topics = ["world", "breaking-news", "technology", "science", "nation"];
+  const results: NewsItem[] = [];
+  const seen = new Set<string>();
+  for (const topic of topics) {
+    if (results.length >= 60) break;
+    try {
+      const res = await fetch(
+        `https://gnews.io/api/v4/top-headlines?topic=${topic}&lang=en&max=10&token=${apiKey}`
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const a of (data.articles || [])) {
+        if (seen.has(a.url)) continue;
+        seen.add(a.url);
+        const item = processArticle(a.title, a.description || "", a.url, a.source?.name || "GNews", a.publishedAt);
+        if (item) results.push(item);
+      }
+    } catch { /* skip failed topic */ }
+  }
+  return results;
+}
+
+async function fetchGuardian(apiKey: string): Promise<NewsItem[]> {
+  // The Guardian Open Platform — free, unlimited, excellent quality
+  const sections = ["world", "technology", "science", "us-news", "uk-news", "environment"];
+  const results: NewsItem[] = [];
+  const seen = new Set<string>();
+  for (const section of sections) {
+    if (results.length >= 40) break;
+    try {
+      const res = await fetch(
+        `https://content.guardianapis.com/search?api-key=${apiKey}&section=${section}&show-fields=trailText&page-size=15&order-by=newest`
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const a of (data.response?.results || [])) {
+        if (seen.has(a.webUrl)) continue;
+        seen.add(a.webUrl);
+        const desc = a.fields?.trailText || "";
+        const item = processArticle(a.webTitle, desc, a.webUrl, "The Guardian", a.webPublicationDate);
+        if (item) results.push(item);
+      }
+    } catch { /* skip */ }
+  }
+  return results;
+}
+
+async function fetchNYT(apiKey: string): Promise<NewsItem[]> {
+  // NYT Top Stories API — free: 4000 req/day
+  const sections = ["world", "technology", "science", "us", "health"];
+  const results: NewsItem[] = [];
+  const seen = new Set<string>();
+  for (const section of sections) {
+    if (results.length >= 40) break;
+    try {
+      const res = await fetch(
+        `https://api.nytimes.com/svc/topstories/v2/${section}.json?api-key=${apiKey}`
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const a of (data.results || []).slice(0, 15)) {
+        if (!a.url || seen.has(a.url)) continue;
+        seen.add(a.url);
+        const desc = a.abstract || a.summary || "";
+        const item = processArticle(a.title, desc, a.url, "New York Times", a.published_date);
+        if (item) results.push(item);
+      }
+    } catch { /* skip */ }
+  }
+  return results;
+}
+
+async function fetchNewsAPI(apiKey: string): Promise<NewsItem[]> {
+  // NewsAPI.org — free developer tier: 100 req/day
+  const results: NewsItem[] = [];
+  const seen = new Set<string>();
+  try {
+    const res = await fetch(
+      `https://newsapi.org/v2/top-headlines?apiKey=${apiKey}&language=en&pageSize=50`
+    );
+    if (!res.ok) return results;
+    const data = await res.json();
+    for (const a of (data.articles || [])) {
+      if (!a.url || seen.has(a.url)) continue;
+      // NewsAPI sometimes returns "[Removed]" placeholder articles
+      if (a.title === "[Removed]" || !a.url.startsWith("http")) continue;
+      seen.add(a.url);
+      const item = processArticle(a.title, a.description || "", a.url, a.source?.name || "NewsAPI", a.publishedAt);
+      if (item) results.push(item);
+    }
+  } catch { /* skip */ }
+  return results;
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  const GNEWS_API_KEY = Deno.env.get("GNEWS_API_KEY");
+  const GNEWS_KEY = Deno.env.get("GNEWS_API_KEY");
+  const GUARDIAN_KEY = Deno.env.get("GUARDIAN_API_KEY");
+  const NYT_KEY = Deno.env.get("NYT_API_KEY");
+  const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
 
-  // If no API key configured, return empty with a helpful message
-  if (!GNEWS_API_KEY) {
+  // Need at least one key
+  if (!GNEWS_KEY && !GUARDIAN_KEY && !NYT_KEY && !NEWSAPI_KEY) {
     return new Response(
-      JSON.stringify({
-        items: [],
-        error: "GNEWS_API_KEY not configured. Add it in Supabase Edge Function secrets.",
-      }),
+      JSON.stringify({ items: [], error: "No news API keys configured. Add GNEWS_API_KEY, GUARDIAN_API_KEY, NYT_API_KEY, or NEWSAPI_KEY in Supabase secrets." }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
   try {
-    // Fetch breaking news + world news from GNews (free tier: 100 requests/day)
-    // "breaking-news" and "world" topics give us real, current articles with URLs
-    const topics = ["breaking-news", "world", "nation", "technology", "science"];
+    // Fetch from all configured sources in parallel
+    const fetchers: Promise<NewsItem[]>[] = [];
+    if (GNEWS_KEY) fetchers.push(fetchGNews(GNEWS_KEY));
+    if (GUARDIAN_KEY) fetchers.push(fetchGuardian(GUARDIAN_KEY));
+    if (NYT_KEY) fetchers.push(fetchNYT(NYT_KEY));
+    if (NEWSAPI_KEY) fetchers.push(fetchNewsAPI(NEWSAPI_KEY));
+
+    const batches = await Promise.allSettled(fetchers);
+
     const allItems: NewsItem[] = [];
     const seenUrls = new Set<string>();
-
-    for (const topic of topics) {
-      if (allItems.length >= 80) break;
-      try {
-        const url = `https://gnews.io/api/v4/top-headlines?topic=${topic}&lang=en&max=30&apikey=${GNEWS_API_KEY}`;
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        const data = await res.json();
-        if (!data.articles) continue;
-
-        for (const article of data.articles) {
-          if (allItems.length >= 80) break;
-          // MUST have a real article URL — skip if missing or invalid
-          if (!article.url || !article.url.startsWith("http")) continue;
-          // Deduplicate
-          if (seenUrls.has(article.url)) continue;
-          seenUrls.add(article.url);
-
-          // Build text for geo-coding: title + description + source name
-          const geoText = `${article.title} ${article.description || ""} ${article.source?.name || ""}`;
-          const coords = findCoords(geoText);
-          if (!coords) continue; // Skip items we can't geo-locate
-
-          const fullText = `${article.title} ${article.description || ""}`;
-          const category = categorize(fullText);
-
-          allItems.push({
-            title: article.title,
-            source: article.source?.name || "Unknown",
-            url: article.url,
-            lat: coords.lat,
-            lng: coords.lng,
-            category,
-            publishedAt: article.publishedAt || new Date().toISOString(),
-            summary: (article.description || "").slice(0, 300),
-          });
+    for (const batch of batches) {
+      if (batch.status !== "fulfilled") continue;
+      for (const item of batch.value) {
+        if (!seenUrls.has(item.url)) {
+          seenUrls.add(item.url);
+          allItems.push(item);
         }
-      } catch {
-        // Individual topic fetch failure — continue to next topic
       }
     }
 
+    // Shuffle so different sources are interleaved on the globe
+    for (let i = allItems.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allItems[i], allItems[j]] = [allItems[j], allItems[i]];
+    }
+
     return new Response(
-      JSON.stringify({ items: allItems, count: allItems.length }),
+      JSON.stringify({ items: allItems.slice(0, 120), count: allItems.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error", items: [] }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
