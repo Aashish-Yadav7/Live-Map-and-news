@@ -441,7 +441,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ items: allItems.slice(0, 150), count: allItems.length }),
+      JSON.stringify({ items: allItems.slice(0, 200), count: allItems.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
