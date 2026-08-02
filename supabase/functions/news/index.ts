@@ -20,7 +20,6 @@ interface NewsItem {
 // ── Geo-coding tables ─────────────────────────────────────────────────────────
 
 const CITIES: [string, number, number][] = [
-  // [name, lat, lng] — longer names first for better specificity
   ["new york city", 40.71, -74.01], ["new york", 40.71, -74.01],
   ["los angeles", 34.05, -118.24], ["san francisco", 37.77, -122.42],
   ["washington dc", 38.90, -77.04], ["washington", 38.90, -77.04],
@@ -62,9 +61,8 @@ const CITIES: [string, number, number][] = [
   ["guangzhou", 23.13, 113.26], ["shenzhen", 22.54, 114.06],
   ["hong kong", 22.32, 114.17], ["chengdu", 30.57, 104.07],
   ["wuhan", 30.59, 114.31], ["chongqing", 29.43, 106.91],
-  ["nanjing", 32.06, 118.80], ["xi'an", 34.27, 108.95],
-  ["taipei", 25.03, 121.57], ["seoul", 37.57, 126.98],
-  ["busan", 35.18, 129.08], ["incheon", 37.46, 126.70],
+  ["nanjing", 32.06, 118.80], ["taipei", 25.03, 121.57],
+  ["seoul", 37.57, 126.98], ["busan", 35.18, 129.08],
   ["mumbai", 19.08, 72.88], ["delhi", 28.61, 77.21],
   ["new delhi", 28.61, 77.21], ["bangalore", 12.97, 77.59],
   ["bengaluru", 12.97, 77.59], ["hyderabad", 17.39, 78.49],
@@ -111,13 +109,11 @@ const CITIES: [string, number, number][] = [
   ["kathmandu", 27.71, 85.32], ["colombo", 6.93, 79.86],
   ["baku", 40.37, 49.84], ["tbilisi", 41.69, 44.83],
   ["yerevan", 40.18, 44.51], ["tashkent", 41.31, 69.24],
-  ["almaty", 43.22, 76.85], ["astana", 51.19, 71.45],
-  ["ulaanbaatar", 47.92, 106.92], ["vladivostok", 43.12, 131.89],
-  ["novosibirsk", 55.00, 82.93],
+  ["almaty", 43.22, 76.85], ["ulaanbaatar", 47.92, 106.92],
+  ["vladivostok", 43.12, 131.89], ["novosibirsk", 55.00, 82.93],
   ["reykjavik", 64.13, -21.94],
 ];
 
-// Countries — requires word-boundary match to avoid false positives (e.g. "iran" inside "ukrainIAN")
 const COUNTRIES: [string, number, number][] = [
   ["united states", 39.0, -98.0], ["united kingdom", 54.0, -2.0],
   ["united arab emirates", 24.0, 54.0],
@@ -168,11 +164,9 @@ const COUNTRIES: [string, number, number][] = [
 
 function findCoords(text: string): { lat: number; lng: number } | null {
   const lower = text.toLowerCase();
-  // Cities: sorted longest-first for specificity (already ordered above)
   for (const [name, lat, lng] of CITIES) {
     if (lower.includes(name)) return { lat, lng };
   }
-  // Countries: use word-boundary match to avoid false positives
   for (const [name, lat, lng] of COUNTRIES) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (new RegExp(`\\b${escaped}\\b`, "i").test(lower)) return { lat, lng };
@@ -183,24 +177,20 @@ function findCoords(text: string): { lat: number; lng: number } | null {
 function categorize(text: string): "accident" | "research" {
   const lower = text.toLowerCase();
   let acc = 0, res = 0;
-  for (const w of ["accident","crash","collision","fire","explosion","flood","earthquake","storm","hurricane","eruption","attack","blast","derail","collapse","landslide","tsunami","tornado","wildfire","dead","killed","injured","wounded","disaster","emergency","evacuat","shooting","bomb","conflict","war","battle","airstrike","strike","siege","hostage","drought","famine","chemical","nuclear","fallout"]) {
+  for (const w of ["accident","crash","collision","fire","explosion","flood","earthquake","storm","hurricane","eruption","attack","blast","derail","collapse","landslide","tsunami","tornado","wildfire","dead","killed","injured","wounded","disaster","emergency","evacuat","shooting","bomb","conflict","war","battle","airstrike","strike","siege","hostage","drought","famine","chemical","nuclear","fallout","crisis","violence","protest","riot","mudslide","avalanche","cyclone","typhoon","magnitude","aftershock"]) {
     if (lower.includes(w)) acc++;
   }
-  for (const w of ["research","study","science","technology"," ai ","artificial intelligence","quantum","space","satellite","launch","discovery","innovation","breakthrough","laboratory","university","scientists","medical","treatment","vaccine","genome","robotics","solar","fusion","biotech","nanotech","climate","renewable","carbon","neuroscience","telescope","probe","experiment","trial"]) {
+  for (const w of ["research","study","science","technology"," ai ","artificial intelligence","quantum","space","satellite","launch","discovery","innovation","breakthrough","laboratory","university","scientists","medical","treatment","vaccine","genome","robotics","solar","fusion","biotech","nanotech","climate","renewable","carbon","neuroscience","telescope","probe","experiment","trial","archaeolog","fossil","exoplanet","mars","moon","iss","spacex","nasa","cura","gene","stem cell","immunotherapy","particle","cancer study","dementia","alzheimer"]) {
     if (lower.includes(w)) res++;
   }
   return acc >= res ? "accident" : "research";
 }
 
 function processArticle(
-  title: string,
-  description: string,
-  url: string,
-  sourceName: string,
-  publishedAt: string
+  title: string, description: string, url: string,
+  sourceName: string, publishedAt: string
 ): NewsItem | null {
   if (!title || !url || !url.startsWith("http")) return null;
-  // Reject generic search-engine links
   if (url.includes("google.com/search") || url.includes("bing.com/search")) return null;
   const geoText = `${title} ${description} ${sourceName}`;
   const coords = findCoords(geoText);
@@ -217,18 +207,163 @@ function processArticle(
   };
 }
 
-// ── API fetchers ──────────────────────────────────────────────────────────────
+// ── RSS feed parser ────────────────────────────────────────────────────────────
+// RSS/Atom XML feeds are 100% free, no API key needed, no rate limits to worry about.
+
+interface RSSFeed {
+  url: string;
+  source: string;
+}
+
+const RSS_FEEDS: RSSFeed[] = [
+  // BBC — world-class coverage, excellent geo keywords in titles
+  { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC" },
+  { url: "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml", source: "BBC Science" },
+  { url: "https://feeds.bbci.co.uk/news/technology/rss.xml", source: "BBC Tech" },
+  // Al Jazeera — strong international / Global South coverage
+  { url: "https://www.aljazeera.com/xml/rss/all.xml", source: "Al Jazeera" },
+  // NPR — US + world news
+  { url: "https://feeds.npr.org/1004/rss.xml", source: "NPR World" },
+  { url: "https://feeds.npr.org/1006/rss.xml", source: "NPR National" },
+  { url: "https://feeds.npr.org/1007/rss.xml", source: "NPR Science" },
+  { url: "https://feeds.npr.org/1009/rss.xml", source: "NPR Tech" },
+  // Deutsche Welle — European perspective, English
+  { url: "https://rss.dw.com/rdf/rss-en-all", source: "DW" },
+  // Reuters world feed (via Google News proxy for reliability)
+  { url: "https://news.google.com/rss/search?q=site:reuters.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "Reuters" },
+  // The Guardian — world + science + tech
+  { url: "https://www.theguardian.com/world/rss", source: "The Guardian" },
+  { url: "https://www.theguardian.com/science/rss", source: "The Guardian Science" },
+  { url: "https://www.theguardian.com/technology/rss", source: "The Guardian Tech" },
+  // NYT — world + science + tech (via Google News proxy)
+  { url: "https://news.google.com/rss/search?q=site:nytimes.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "New York Times" },
+  // Sydney Morning Herald — Oceania
+  { url: "https://www.smh.com.au/rss/feed.xml", source: "SMH" },
+  // Japan Times — Asia
+  { url: "https://japantoday.com/feed", source: "Japan Today" },
+  // Times of India — South Asia
+  { url: "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms", source: "Times of India" },
+  // Jerusalem Post — Middle East
+  { url: "https://www.jpost.com/Rss/RssFeedsHeadlines.aspx", source: "Jerusalem Post" },
+  // USGS earthquake feeds — real-time natural disasters (magnitude 4.5+ worldwide)
+  { url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson", source: "USGS Earthquakes" },
+];
+
+// Extract <item> / <entry> elements from RSS/Atom XML using regex (no XML parser needed)
+function parseRSS(xml: string, sourceName: string): NewsItem[] {
+  const items: NewsItem[] = [];
+
+  // RSS <item> elements
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  // Atom <entry> elements
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
+
+  const blocks: string[] = [];
+  let m: RegExpExecArray | null;
+
+  while ((m = itemRegex.exec(xml)) !== null) blocks.push(m[1]);
+  while ((m = entryRegex.exec(xml)) !== null) blocks.push(m[1]);
+
+  for (const block of blocks) {
+    const title = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim() || "";
+    let link = block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim() || "";
+    // Atom feeds often use <link href="..."/> instead of <link>text</link>
+    if (!link) {
+      link = block.match(/<link[^>]*href="([^"]+)"/i)?.[1] || "";
+    }
+    const pubDate = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() ||
+                    block.match(/<published>([\s\S]*?)<\/published>/i)?.[1]?.trim() ||
+                    block.match(/<updated>([\s\S]*?)<\/updated>/i)?.[1]?.trim() || "";
+    const desc = block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim() ||
+                 block.match(/<summary>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/i)?.[1]?.trim() || "";
+
+    // Strip HTML tags from description
+    const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
+
+    const item = processArticle(title, cleanDesc, link, sourceName, pubDate);
+    if (item) items.push(item);
+  }
+
+  return items;
+}
+
+// Parse USGS GeoJSON earthquake feed — titles already contain location names
+function parseUSGS(json: string): NewsItem[] {
+  const items: NewsItem[] = [];
+  try {
+    const data = JSON.parse(json);
+    for (const feature of (data.features || []).slice(0, 30)) {
+      const props = feature.properties;
+      const coords = feature.geometry?.coordinates;
+      if (!props || !coords || coords.length < 2) continue;
+      const title = `M${props.mag} earthquake - ${props.place || "Unknown"}`;
+      const url = props.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${props.code}`;
+      items.push({
+        title,
+        source: "USGS",
+        url,
+        lat: coords[1],
+        lng: coords[0],
+        category: "accident",
+        publishedAt: props.time ? new Date(props.time).toISOString() : new Date().toISOString(),
+        summary: `Magnitude ${props.mag} earthquake detected. ${props.place || ""}`,
+      });
+    }
+  } catch { /* skip */ }
+  return items;
+}
+
+async function fetchRSSFeeds(): Promise<NewsItem[]> {
+  const results: NewsItem[] = [];
+  const seen = new Set<string>();
+
+  // Fetch all feeds in parallel — Promise.allSettled so one failure doesn't kill all
+  const fetches = RSS_FEEDS.map(async (feed) => {
+    try {
+      const res = await fetch(feed.url, {
+        headers: { "User-Agent": "WorldNewsGlobe/1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return [];
+      const text = await res.text();
+
+      // USGS earthquake feed is GeoJSON, not RSS
+      if (feed.url.includes("earthquake.usgs.gov")) {
+        return parseUSGS(text);
+      }
+
+      return parseRSS(text, feed.source);
+    } catch {
+      return [];
+    }
+  });
+
+  const batches = await Promise.allSettled(fetches);
+  for (const batch of batches) {
+    if (batch.status !== "fulfilled") continue;
+    for (const item of batch.value) {
+      if (!seen.has(item.url)) {
+        seen.add(item.url);
+        results.push(item);
+      }
+    }
+  }
+
+  return results;
+}
+
+// ── Optional API fetchers (if keys are configured) ─────────────────────────────
 
 async function fetchGNews(apiKey: string): Promise<NewsItem[]> {
-  // GNews v4 uses "token" param (NOT "apikey") — free tier: 100 req/day, 10 articles/req
   const topics = ["world", "breaking-news", "technology", "science", "nation"];
   const results: NewsItem[] = [];
   const seen = new Set<string>();
   for (const topic of topics) {
-    if (results.length >= 60) break;
+    if (results.length >= 40) break;
     try {
       const res = await fetch(
-        `https://gnews.io/api/v4/top-headlines?topic=${topic}&lang=en&max=10&token=${apiKey}`
+        `https://gnews.io/api/v4/top-headlines?topic=${topic}&lang=en&max=10&token=${apiKey}`,
+        { signal: AbortSignal.timeout(8000) }
       );
       if (!res.ok) continue;
       const data = await res.json();
@@ -238,80 +373,32 @@ async function fetchGNews(apiKey: string): Promise<NewsItem[]> {
         const item = processArticle(a.title, a.description || "", a.url, a.source?.name || "GNews", a.publishedAt);
         if (item) results.push(item);
       }
-    } catch { /* skip failed topic */ }
+    } catch { /* skip */ }
   }
   return results;
 }
 
 async function fetchGuardian(apiKey: string): Promise<NewsItem[]> {
-  // The Guardian Open Platform — free, unlimited, excellent quality
-  const sections = ["world", "technology", "science", "us-news", "uk-news", "environment"];
+  const sections = ["world", "technology", "science", "us-news", "environment"];
   const results: NewsItem[] = [];
   const seen = new Set<string>();
   for (const section of sections) {
-    if (results.length >= 40) break;
+    if (results.length >= 30) break;
     try {
       const res = await fetch(
-        `https://content.guardianapis.com/search?api-key=${apiKey}&section=${section}&show-fields=trailText&page-size=15&order-by=newest`
+        `https://content.guardianapis.com/search?api-key=${apiKey}&section=${section}&show-fields=trailText&page-size=15&order-by=newest`,
+        { signal: AbortSignal.timeout(8000) }
       );
       if (!res.ok) continue;
       const data = await res.json();
       for (const a of (data.response?.results || [])) {
         if (seen.has(a.webUrl)) continue;
         seen.add(a.webUrl);
-        const desc = a.fields?.trailText || "";
-        const item = processArticle(a.webTitle, desc, a.webUrl, "The Guardian", a.webPublicationDate);
+        const item = processArticle(a.webTitle, a.fields?.trailText || "", a.webUrl, "The Guardian", a.webPublicationDate);
         if (item) results.push(item);
       }
     } catch { /* skip */ }
   }
-  return results;
-}
-
-async function fetchNYT(apiKey: string): Promise<NewsItem[]> {
-  // NYT Top Stories API — free: 4000 req/day
-  const sections = ["world", "technology", "science", "us", "health"];
-  const results: NewsItem[] = [];
-  const seen = new Set<string>();
-  for (const section of sections) {
-    if (results.length >= 40) break;
-    try {
-      const res = await fetch(
-        `https://api.nytimes.com/svc/topstories/v2/${section}.json?api-key=${apiKey}`
-      );
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const a of (data.results || []).slice(0, 15)) {
-        if (!a.url || seen.has(a.url)) continue;
-        seen.add(a.url);
-        const desc = a.abstract || a.summary || "";
-        const item = processArticle(a.title, desc, a.url, "New York Times", a.published_date);
-        if (item) results.push(item);
-      }
-    } catch { /* skip */ }
-  }
-  return results;
-}
-
-async function fetchNewsAPI(apiKey: string): Promise<NewsItem[]> {
-  // NewsAPI.org — free developer tier: 100 req/day
-  const results: NewsItem[] = [];
-  const seen = new Set<string>();
-  try {
-    const res = await fetch(
-      `https://newsapi.org/v2/top-headlines?apiKey=${apiKey}&language=en&pageSize=50`
-    );
-    if (!res.ok) return results;
-    const data = await res.json();
-    for (const a of (data.articles || [])) {
-      if (!a.url || seen.has(a.url)) continue;
-      // NewsAPI sometimes returns "[Removed]" placeholder articles
-      if (a.title === "[Removed]" || !a.url.startsWith("http")) continue;
-      seen.add(a.url);
-      const item = processArticle(a.title, a.description || "", a.url, a.source?.name || "NewsAPI", a.publishedAt);
-      if (item) results.push(item);
-    }
-  } catch { /* skip */ }
   return results;
 }
 
@@ -324,24 +411,14 @@ Deno.serve(async (req: Request) => {
 
   const GNEWS_KEY = Deno.env.get("GNEWS_API_KEY");
   const GUARDIAN_KEY = Deno.env.get("GUARDIAN_API_KEY");
-  const NYT_KEY = Deno.env.get("NYT_API_KEY");
-  const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
-
-  // Need at least one key
-  if (!GNEWS_KEY && !GUARDIAN_KEY && !NYT_KEY && !NEWSAPI_KEY) {
-    return new Response(
-      JSON.stringify({ items: [], error: "No news API keys configured. Add GNEWS_API_KEY, GUARDIAN_API_KEY, NYT_API_KEY, or NEWSAPI_KEY in Supabase secrets." }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
 
   try {
-    // Fetch from all configured sources in parallel
-    const fetchers: Promise<NewsItem[]>[] = [];
+    // Always fetch from RSS feeds (free, no key needed)
+    const fetchers: Promise<NewsItem[]>[] = [fetchRSSFeeds()];
+
+    // Add API sources if keys are configured
     if (GNEWS_KEY) fetchers.push(fetchGNews(GNEWS_KEY));
     if (GUARDIAN_KEY) fetchers.push(fetchGuardian(GUARDIAN_KEY));
-    if (NYT_KEY) fetchers.push(fetchNYT(NYT_KEY));
-    if (NEWSAPI_KEY) fetchers.push(fetchNewsAPI(NEWSAPI_KEY));
 
     const batches = await Promise.allSettled(fetchers);
 
@@ -364,7 +441,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ items: allItems.slice(0, 120), count: allItems.length }),
+      JSON.stringify({ items: allItems.slice(0, 150), count: allItems.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
