@@ -62,35 +62,22 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
 
     if (newsItems.length === 0) return
 
-    const dotGeo = new THREE.SphereGeometry(0.02, 10, 10)
-    const glowGeo = new THREE.SphereGeometry(0.038, 10, 10)
+    const dotGeo = new THREE.SphereGeometry(0.012, 8, 8)
 
     newsItems.forEach(item => {
       const isAcc = item.category === 'accident'
 
       const dotMat = new THREE.MeshBasicMaterial({
-        color: isAcc ? 0xef4444 : 0x38bdf8,
+        color: isAcc ? 0xef4444 : 0x3b82f6,
         depthTest: true,
         depthWrite: true,
         toneMapped: false,
       })
       const dot = new THREE.Mesh(dotGeo, dotMat)
 
-      const glowMat = new THREE.MeshBasicMaterial({
-        color: isAcc ? 0xff6666 : 0x7dd3fc,
-        transparent: true,
-        opacity: 0.3,
-        depthTest: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false,
-      })
-      const glowMesh = new THREE.Mesh(glowGeo, glowMat)
-
-      // Group both meshes so we can hide the whole marker with one visibility flag
       const group = new THREE.Group()
       group.position.copy(latLngToVec3(item.lat, item.lng, 1.0))
-      group.add(dot, glowMesh)
+      group.add(dot)
       container.add(group)
       markersRef.current.push({ group, dot, item })
     })
@@ -116,13 +103,6 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
     renderer.setSize(w, h)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     mount.appendChild(renderer.domElement)
-
-    // ── Stars ─────────────────────────────────────────────────────────────────
-    const starVerts = new Float32Array(4000 * 3)
-    for (let i = 0; i < starVerts.length; i++) starVerts[i] = (Math.random() - 0.5) * 300
-    const starGeo = new THREE.BufferGeometry()
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starVerts, 3))
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, sizeAttenuation: true })))
 
     // ── Lighting — matches reference photo: gentle warm sun, no hotspot ───────
     // High ambient so the night side is still visible (not pitch black)
