@@ -42,9 +42,10 @@ export default function App() {
       <header className="border-b border-neutral-800/60 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-shrink-0">
         <div className="flex items-center gap-2">
           <img
-            src="/images/world_logo copy copy.png"
+            src="/images/world_logo copy copy copy.png"
             alt="World News Globe"
-            className="h-10 sm:h-12 w-auto object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+            className="h-16 sm:h-20 w-auto object-contain"
+            style={{ mixBlendMode: 'multiply' }}
           />
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
