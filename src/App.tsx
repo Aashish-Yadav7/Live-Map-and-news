@@ -1,11 +1,13 @@
 import { useState, useCallback } from 'react'
-import { Globe as GlobeIcon, AlertTriangle, Microscope, Loader2, X, ExternalLink, Search } from 'lucide-react'
+import { Globe as GlobeIcon, AlertTriangle, Microscope, Loader2, X, ExternalLink, Search, MapPin } from 'lucide-react'
 import Globe from './components/Globe'
 import { useNews } from './hooks/useNews'
 import type { NewsItem } from './types'
 
 export default function App() {
-  const { items, loading, error } = useNews()
+  const [countryInput, setCountryInput] = useState('')
+  const [countrySearch, setCountrySearch] = useState('')
+  const { items, loading, error } = useNews(countrySearch)
   const [hovered, setHovered] = useState<NewsItem | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
   const [selected, setSelected] = useState<NewsItem | null>(null)
@@ -13,6 +15,18 @@ export default function App() {
   const handleHover = useCallback((item: NewsItem | null, x: number, y: number) => {
     setHovered(item)
     setTooltipPos({ x, y })
+  }, [])
+
+  const handleCountrySearch = useCallback((e: React.FormEvent) => {
+    e.preventDefault()
+    setCountrySearch(countryInput.trim())
+    setSelected(null)
+  }, [countryInput])
+
+  const clearCountrySearch = useCallback(() => {
+    setCountryInput('')
+    setCountrySearch('')
+    setSelected(null)
   }, [])
 
   const accidentCount = items.filter(i => i.category === 'accident').length
@@ -54,6 +68,45 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {/* Country search bar */}
+      <div className="px-4 pb-3 border-b border-neutral-800/60">
+        <form onSubmit={handleCountrySearch} className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+            <input
+              type="text"
+              value={countryInput}
+              onChange={(e) => setCountryInput(e.target.value)}
+              placeholder="Search by country (e.g. Japan, Brazil, France)..."
+              className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 transition-colors rounded-lg text-sm font-medium text-white flex items-center gap-1.5 flex-shrink-0"
+          >
+            <Search className="w-4 h-4" />
+            <span className="hidden sm:inline">Filter</span>
+          </button>
+          {countrySearch && (
+            <button
+              type="button"
+              onClick={clearCountrySearch}
+              className="px-2.5 py-2 bg-neutral-800 hover:bg-neutral-700 transition-colors rounded-lg text-sm text-neutral-300 flex items-center gap-1 flex-shrink-0"
+              title="Clear filter"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </form>
+        {countrySearch && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-blue-300">
+            <MapPin className="w-3.5 h-3.5" />
+            <span>Showing news for: <span className="font-medium capitalize">{countrySearch}</span></span>
+          </div>
+        )}
+      </div>
 
       {/* Main content
           Mobile  : globe fixed at top (55vh), news scrolls below

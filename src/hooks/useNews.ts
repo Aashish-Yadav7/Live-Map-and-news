@@ -11,20 +11,22 @@ const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 // Only keep items with a real, valid article URL (not a search link)
 function isRealArticle(item: NewsItem): boolean {
   if (!item.url || !item.url.startsWith('http')) return false
-  // Reject generic search-engine links
   if (item.url.includes('google.com/search')) return false
   return true
 }
 
-export function useNews() {
+export function useNews(country: string = '') {
   const [items, setItems] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchNews = useCallback(async () => {
+  const fetchNews = useCallback(async (countryQuery: string) => {
     try {
       setLoading(true)
-      const res = await fetch(NEWS_ENDPOINT, {
+      const endpoint = countryQuery
+        ? `${NEWS_ENDPOINT}?country=${encodeURIComponent(countryQuery)}`
+        : NEWS_ENDPOINT
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${ANON_KEY}` },
       })
       if (!res.ok) throw new Error(`Failed (${res.status})`)
@@ -35,7 +37,6 @@ export function useNews() {
         return
       }
       const raw: NewsItem[] = data.items || []
-      // Client-side filter: only real articles with valid URLs
       const verified = raw.filter(isRealArticle)
       setItems(verified)
       setError(null)
@@ -51,7 +52,10 @@ export function useNews() {
     const run = async () => {
       try {
         setLoading(true)
-        const res = await fetch(NEWS_ENDPOINT, {
+        const endpoint = country
+          ? `${NEWS_ENDPOINT}?country=${encodeURIComponent(country)}`
+          : NEWS_ENDPOINT
+        const res = await fetch(endpoint, {
           headers: { Authorization: `Bearer ${ANON_KEY}` },
         })
         if (!res.ok) throw new Error(`Failed (${res.status})`)
@@ -79,7 +83,7 @@ export function useNews() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [])
+  }, [country])
 
   return { items, loading, error, refetch: fetchNews }
 }

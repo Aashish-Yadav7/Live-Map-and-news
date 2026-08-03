@@ -4,6 +4,7 @@ export interface NewsItem {
   url: string
   lat: number
   lng: number
+  country: string
   category: 'accident' | 'research'
   publishedAt: string
   summary?: string

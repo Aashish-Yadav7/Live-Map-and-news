@@ -12,6 +12,7 @@ interface NewsItem {
   url: string;
   lat: number;
   lng: number;
+  country: string;
   category: "accident" | "research";
   publishedAt: string;
   summary: string;
@@ -162,16 +163,71 @@ const COUNTRIES: [string, number, number][] = [
   ["kazakh", 48.0, 68.0], ["uzbek", 41.0, 64.0],
 ];
 
-function findCoords(text: string): { lat: number; lng: number } | null {
+// City → country mapping, aligned with CITIES array above by index
+const CITY_COUNTRIES: string[] = [
+  "united states","united states","united states","united states","united states","united states",
+  "united states","united states","united states","united states","united states","united states",
+  "united states","united states","united states","united states","united states","united states",
+  "united states","united states","united states","united states","united states",
+  "united kingdom","france","germany","spain","spain","italy","italy","netherlands",
+  "belgium","austria","switzerland","switzerland","sweden","norway","finland","denmark",
+  "ireland","portugal","greece","poland","czech","hungary","romania","ukraine","ukraine",
+  "russia","russia","russia","belarus","serbia","croatia","bulgaria","germany","germany",
+  "germany","united kingdom","united kingdom","united kingdom","united kingdom","united kingdom",
+  "france","france","italy","italy","italy","netherlands",
+  "japan","japan","japan","japan","china","china","china","china","china","china","china",
+  "china","china","china","taiwan","south korea","south korea","india","india","india","india",
+  "india","india","india","india","india","india","india",
+  "australia","australia","australia","australia","australia","new zealand","new zealand",
+  "canada","canada","canada","canada","mexico","mexico","brazil","brazil","brazil",
+  "argentina","argentina","chile","colombia","colombia","peru","venezuela","cuba",
+  "turkey","turkey","united arab emirates","united arab emirates","saudi arabia","saudi arabia",
+  "qatar","kuwait","oman","israel","israel","jordan","lebanon","syria","iraq","iran",
+  "egypt","egypt","nigeria","nigeria","kenya","ethiopia","south africa","south africa",
+  "south africa","south africa","tanzania","uganda","ghana","senegal","morocco","algeria",
+  "tunisia","singapore","malaysia","indonesia","thailand","vietnam","vietnam","philippines",
+  "myanmar","cambodia","bangladesh","pakistan","pakistan","pakistan","afghanistan","nepal",
+  "sri lanka","azerbaijan","georgia","armenia","uzbekistan","kazakhstan","mongolia","russia",
+  "russia","iceland",
+];
+
+// Escape regex special characters in a string
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findLocation(text: string): { lat: number; lng: number; country: string } | null {
   const lower = text.toLowerCase();
-  for (const [name, lat, lng] of CITIES) {
-    if (lower.includes(name)) return { lat, lng };
+  for (let i = 0; i < CITIES.length; i++) {
+    if (lower.includes(CITIES[i][0])) {
+      return { lat: CITIES[i][1], lng: CITIES[i][2], country: CITY_COUNTRIES[i] };
+    }
   }
   for (const [name, lat, lng] of COUNTRIES) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`\\b${escaped}\\b`, "i").test(lower)) return { lat, lng };
+    const pattern = new RegExp("\\b" + escapeRegExp(name) + "\\b", "i");
+    if (pattern.test(lower)) {
+      return { lat, lng, country: name };
+    }
   }
   return null;
+}
+
+// Normalize country query: handles aliases and common variations
+function normalizeCountry(input: string): string {
+  const lower = input.toLowerCase().trim();
+  const aliases: Record<string, string> = {
+    "usa": "united states", "us": "united states", "america": "united states",
+    "uk": "united kingdom", "britain": "united kingdom", "great britain": "united kingdom",
+    "uae": "united arab emirates",
+    "south korea": "south korea", "korea": "south korea",
+    "czech republic": "czech",
+    "russia": "russia", "russian federation": "russia",
+  };
+  if (aliases[lower]) return aliases[lower];
+  for (const [name] of COUNTRIES) {
+    if (name === lower) return name;
+  }
+  return lower;
 }
 
 function categorize(text: string): "accident" | "research" {
@@ -193,14 +249,15 @@ function processArticle(
   if (!title || !url || !url.startsWith("http")) return null;
   if (url.includes("google.com/search") || url.includes("bing.com/search")) return null;
   const geoText = `${title} ${description} ${sourceName}`;
-  const coords = findCoords(geoText);
-  if (!coords) return null;
+  const loc = findLocation(geoText);
+  if (!loc) return null;
   return {
     title: title.trim(),
     source: sourceName,
     url,
-    lat: coords.lat,
-    lng: coords.lng,
+    lat: loc.lat,
+    lng: loc.lng,
+    country: loc.country,
     category: categorize(`${title} ${description}`),
     publishedAt: publishedAt || new Date().toISOString(),
     summary: description ? description.slice(0, 300) : "",
@@ -216,48 +273,31 @@ interface RSSFeed {
 }
 
 const RSS_FEEDS: RSSFeed[] = [
-  // BBC — world-class coverage, excellent geo keywords in titles
   { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC" },
   { url: "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml", source: "BBC Science" },
   { url: "https://feeds.bbci.co.uk/news/technology/rss.xml", source: "BBC Tech" },
-  // Al Jazeera — strong international / Global South coverage
   { url: "https://www.aljazeera.com/xml/rss/all.xml", source: "Al Jazeera" },
-  // NPR — US + world news
   { url: "https://feeds.npr.org/1004/rss.xml", source: "NPR World" },
   { url: "https://feeds.npr.org/1006/rss.xml", source: "NPR National" },
   { url: "https://feeds.npr.org/1007/rss.xml", source: "NPR Science" },
   { url: "https://feeds.npr.org/1009/rss.xml", source: "NPR Tech" },
-  // Deutsche Welle — European perspective, English
   { url: "https://rss.dw.com/rdf/rss-en-all", source: "DW" },
-  // Reuters world feed (via Google News proxy for reliability)
   { url: "https://news.google.com/rss/search?q=site:reuters.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "Reuters" },
-  // The Guardian — world + science + tech
   { url: "https://www.theguardian.com/world/rss", source: "The Guardian" },
   { url: "https://www.theguardian.com/science/rss", source: "The Guardian Science" },
   { url: "https://www.theguardian.com/technology/rss", source: "The Guardian Tech" },
-  // NYT — world + science + tech (via Google News proxy)
   { url: "https://news.google.com/rss/search?q=site:nytimes.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "New York Times" },
-  // Sydney Morning Herald — Oceania
   { url: "https://www.smh.com.au/rss/feed.xml", source: "SMH" },
-  // Japan Times — Asia
   { url: "https://japantoday.com/feed", source: "Japan Today" },
-  // Times of India — South Asia
   { url: "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms", source: "Times of India" },
-  // Jerusalem Post — Middle East
   { url: "https://www.jpost.com/Rss/RssFeedsHeadlines.aspx", source: "Jerusalem Post" },
-  // USGS earthquake feeds — real-time natural disasters (magnitude 4.5+ worldwide)
   { url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson", source: "USGS Earthquakes" },
 ];
 
-// Extract <item> / <entry> elements from RSS/Atom XML using regex (no XML parser needed)
 function parseRSS(xml: string, sourceName: string): NewsItem[] {
   const items: NewsItem[] = [];
-
-  // RSS <item> elements
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-  // Atom <entry> elements
   const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
-
   const blocks: string[] = [];
   let m: RegExpExecArray | null;
 
@@ -267,7 +307,6 @@ function parseRSS(xml: string, sourceName: string): NewsItem[] {
   for (const block of blocks) {
     const title = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim() || "";
     let link = block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim() || "";
-    // Atom feeds often use <link href="..."/> instead of <link>text</link>
     if (!link) {
       link = block.match(/<link[^>]*href="([^"]+)"/i)?.[1] || "";
     }
@@ -276,10 +315,7 @@ function parseRSS(xml: string, sourceName: string): NewsItem[] {
                     block.match(/<updated>([\s\S]*?)<\/updated>/i)?.[1]?.trim() || "";
     const desc = block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim() ||
                  block.match(/<summary>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/i)?.[1]?.trim() || "";
-
-    // Strip HTML tags from description
     const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
-
     const item = processArticle(title, cleanDesc, link, sourceName, pubDate);
     if (item) items.push(item);
   }
@@ -287,7 +323,6 @@ function parseRSS(xml: string, sourceName: string): NewsItem[] {
   return items;
 }
 
-// Parse USGS GeoJSON earthquake feed — titles already contain location names
 function parseUSGS(json: string): NewsItem[] {
   const items: NewsItem[] = [];
   try {
@@ -304,6 +339,7 @@ function parseUSGS(json: string): NewsItem[] {
         url,
         lat: coords[1],
         lng: coords[0],
+        country: "",
         category: "accident",
         publishedAt: props.time ? new Date(props.time).toISOString() : new Date().toISOString(),
         summary: `Magnitude ${props.mag} earthquake detected. ${props.place || ""}`,
@@ -317,7 +353,6 @@ async function fetchRSSFeeds(): Promise<NewsItem[]> {
   const results: NewsItem[] = [];
   const seen = new Set<string>();
 
-  // Fetch all feeds in parallel — Promise.allSettled so one failure doesn't kill all
   const fetches = RSS_FEEDS.map(async (feed) => {
     try {
       const res = await fetch(feed.url, {
@@ -326,12 +361,9 @@ async function fetchRSSFeeds(): Promise<NewsItem[]> {
       });
       if (!res.ok) return [];
       const text = await res.text();
-
-      // USGS earthquake feed is GeoJSON, not RSS
       if (feed.url.includes("earthquake.usgs.gov")) {
         return parseUSGS(text);
       }
-
       return parseRSS(text, feed.source);
     } catch {
       return [];
@@ -402,6 +434,35 @@ async function fetchGuardian(apiKey: string): Promise<NewsItem[]> {
   return results;
 }
 
+// ── Country-specific RSS search via Google News ────────────────────────────────
+
+async function fetchCountryRSS(countryQuery: string): Promise<NewsItem[]> {
+  const results: NewsItem[] = [];
+  const seen = new Set<string>();
+  const urls = [
+    `https://news.google.com/rss/search?q=${encodeURIComponent(countryQuery)}+when:3d&hl=en-US&gl=US&ceid=US:en`,
+    `https://news.google.com/rss/search?q=${encodeURIComponent(countryQuery + " news")}+when:3d&hl=en-US&gl=US&ceid=US:en`,
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "WorldNewsGlobe/1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const text = await res.text();
+      const items = parseRSS(text, `Google News (${countryQuery})`);
+      for (const item of items) {
+        if (!seen.has(item.url)) {
+          seen.add(item.url);
+          results.push(item);
+        }
+      }
+    } catch { /* skip */ }
+  }
+  return results;
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -412,11 +473,17 @@ Deno.serve(async (req: Request) => {
   const GNEWS_KEY = Deno.env.get("GNEWS_API_KEY");
   const GUARDIAN_KEY = Deno.env.get("GUARDIAN_API_KEY");
 
+  const url = new URL(req.url);
+  const countryParam = url.searchParams.get("country")?.trim() || "";
+  const countryFilter = countryParam ? normalizeCountry(countryParam) : "";
+
   try {
-    // Always fetch from RSS feeds (free, no key needed)
     const fetchers: Promise<NewsItem[]>[] = [fetchRSSFeeds()];
 
-    // Add API sources if keys are configured
+    if (countryFilter) {
+      fetchers.push(fetchCountryRSS(countryFilter));
+    }
+
     if (GNEWS_KEY) fetchers.push(fetchGNews(GNEWS_KEY));
     if (GUARDIAN_KEY) fetchers.push(fetchGuardian(GUARDIAN_KEY));
 
@@ -434,14 +501,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Shuffle so different sources are interleaved on the globe
-    for (let i = allItems.length - 1; i > 0; i--) {
+    let filtered = allItems;
+    if (countryFilter) {
+      filtered = allItems.filter(item =>
+        item.country === countryFilter ||
+        item.title.toLowerCase().includes(countryFilter) ||
+        item.summary.toLowerCase().includes(countryFilter)
+      );
+    }
+
+    for (let i = filtered.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [allItems[i], allItems[j]] = [allItems[j], allItems[i]];
+      [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
     }
 
     return new Response(
-      JSON.stringify({ items: allItems.slice(0, 200), count: allItems.length }),
+      JSON.stringify({ items: filtered.slice(0, 200), count: filtered.length, country: countryFilter || null }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
