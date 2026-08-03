@@ -70,7 +70,7 @@ export default function App() {
       </header>
 
       {/* Country search bar */}
-      <div className="px-4 pb-3 border-b border-neutral-800/60">
+      <div className="px-4 pt-3 pb-3 border-b border-neutral-800/60">
         <form onSubmit={handleCountrySearch} className="flex items-center gap-2">
           <div className="relative flex-1">
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
