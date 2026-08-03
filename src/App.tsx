@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Globe as GlobeIcon, AlertTriangle, Microscope, Loader2, X, ExternalLink, Search, MapPin } from 'lucide-react'
+import { AlertTriangle, Microscope, Loader2, X, ExternalLink, Search, MapPin } from 'lucide-react'
 import Globe from './components/Globe'
 import { useNews } from './hooks/useNews'
 import type { NewsItem } from './types'
@@ -40,12 +40,12 @@ export default function App() {
     <div className="h-screen w-screen bg-gradient-to-b from-neutral-950 via-black to-neutral-950 text-white flex flex-col overflow-hidden">
       {/* Header */}
       <header className="border-b border-neutral-800/60 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <GlobeIcon className="w-6 h-6 sm:w-7 sm:h-7 text-blue-400" />
-          <div>
-            <h1 className="text-lg sm:text-xl font-semibold tracking-tight">World News Globe</h1>
-            <p className="text-xs text-neutral-500 hidden sm:block">Real-time geo-located news from around the world</p>
-          </div>
+        <div className="flex items-center gap-2">
+          <img
+            src="/images/world_logo copy copy.png"
+            alt="World News Globe"
+            className="h-10 sm:h-12 w-auto object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+          />
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-3 sm:gap-4 text-sm">
