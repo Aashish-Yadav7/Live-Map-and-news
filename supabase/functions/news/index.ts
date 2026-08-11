@@ -243,26 +243,54 @@ function categorize(text: string): "accident" | "research" {
   return acc >= res ? "accident" : "research";
 }
 
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
+function cleanDescription(value: string): string {
+  let cleaned = value;
+  for (let i = 0; i < 2; i++) cleaned = decodeHtml(cleaned);
+  return cleaned
+    .replace(/<[^>]*>/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function validImageUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const decoded = decodeHtml(value).trim();
+  return /^https?:\/\//i.test(decoded) ? decoded : undefined;
+}
+
 function processArticle(
   title: string, description: string, url: string,
   sourceName: string, publishedAt: string, imageUrl?: string
 ): NewsItem | null {
   if (!title || !url || !url.startsWith("http")) return null;
   if (url.includes("google.com/search") || url.includes("bing.com/search")) return null;
-  const geoText = `${title} ${description} ${sourceName}`;
+  const summary = cleanDescription(description);
+  const geoText = `${title} ${summary} ${sourceName}`;
   const loc = findLocation(geoText);
   if (!loc) return null;
   return {
-    title: title.trim(),
+    title: decodeHtml(title).trim(),
     source: sourceName,
     url,
     lat: loc.lat,
     lng: loc.lng,
     country: loc.country,
-    category: categorize(`${title} ${description}`),
+    category: categorize(`${title} ${summary}`),
     publishedAt: publishedAt || new Date().toISOString(),
-    summary: description ? description.slice(0, 300) : "",
-    imageUrl: imageUrl || undefined,
+    summary,
+    imageUrl: validImageUrl(imageUrl),
   };
 }
 
@@ -317,7 +345,7 @@ function parseRSS(xml: string, sourceName: string): NewsItem[] {
                     block.match(/<updated>([\s\S]*?)<\/updated>/i)?.[1]?.trim() || "";
     const desc = block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim() ||
                  block.match(/<summary>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/i)?.[1]?.trim() || "";
-    const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
+    const decodedDesc = decodeHtml(desc);
     // Extract image URL from enclosure, media:content, media:thumbnail, or description HTML
     let imageUrl: string | undefined;
     const enclosure = block.match(/<enclosure[^>]+type="image\/[^"]+"[^>]+url="([^"]+)"/i)?.[1]
@@ -325,9 +353,9 @@ function parseRSS(xml: string, sourceName: string): NewsItem[] {
     const mediaContent = block.match(/<media:content[^>]+url="([^"]+)"[^>]+medium="image"/i)?.[1]
       || block.match(/<media:content[^>]+medium="image"[^>]+url="([^"]+)"/i)?.[1];
     const mediaThumb = block.match(/<media:thumbnail[^>]+url="([^"]+)"/i)?.[1];
-    const descImg = desc.match(/<img[^>]+src="([^"]+)"/i)?.[1];
+    const descImg = decodedDesc.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1];
     imageUrl = enclosure || mediaContent || mediaThumb || descImg || undefined;
-    const item = processArticle(title, cleanDesc, link, sourceName, pubDate, imageUrl);
+    const item = processArticle(title, desc, link, sourceName, pubDate, imageUrl);
     if (item) items.push(item);
   }
 

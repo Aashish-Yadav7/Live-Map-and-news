@@ -191,9 +191,6 @@ export default function App() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-neutral-200 leading-snug line-clamp-2">{item.title}</p>
-                  {item.summary && (
-                    <p className="text-xs text-neutral-400 mt-0.5 line-clamp-2">{item.summary}</p>
-                  )}
                   <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
                     {item.source}
                     <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 text-neutral-600" />
@@ -210,7 +207,7 @@ export default function App() {
         <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setSelected(null)}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-md bg-neutral-950 border-l border-neutral-800 h-full overflow-y-auto animate-slide-in"
+            className="relative w-full max-w-2xl bg-neutral-950 border-l border-neutral-800 h-full overflow-y-auto animate-slide-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800 px-5 py-4 flex items-center justify-between z-10">
@@ -232,15 +229,18 @@ export default function App() {
               </button>
             </div>
             <div className="p-5 space-y-4">
-              {selected.imageUrl && (
+              {selected.imageUrl ? (
                 <img
                   src={selected.imageUrl}
-                  alt={selected.title}
-                  className="w-full h-48 object-cover rounded-lg border border-neutral-800"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  alt=""
+                  className="w-full h-64 object-cover rounded-lg border border-neutral-800 bg-neutral-900"
                 />
+              ) : (
+                <div className="w-full h-32 rounded-lg border border-neutral-800 bg-neutral-900 flex items-center justify-center text-sm text-neutral-500">
+                  Article image unavailable
+                </div>
               )}
-              <h2 className="text-lg font-semibold leading-tight">{selected.title}</h2>
+              <h2 className="text-2xl font-semibold leading-tight text-white">{selected.title}</h2>
               <div className="flex items-center gap-3 text-xs text-neutral-400">
                 <span className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-300">{selected.source}</span>
                 <span>
@@ -253,12 +253,12 @@ export default function App() {
                 <p className="text-neutral-500 mb-1">Location</p>
                 <p>{selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}</p>
               </div>
-              {selected.summary && (
-                <div className="text-sm text-neutral-300">
-                  <p className="text-neutral-500 mb-1">Summary</p>
-                  <p className="leading-relaxed">{selected.summary}</p>
-                </div>
-              )}
+              <div className="text-sm text-neutral-300">
+                <p className="text-neutral-500 mb-1">Summary</p>
+                <p className="leading-relaxed whitespace-pre-line">
+                  {selected.summary || 'No summary was provided by the news source.'}
+                </p>
+              </div>
               <div className="space-y-2 pt-2">
                 <a
                   href={selected.url}
