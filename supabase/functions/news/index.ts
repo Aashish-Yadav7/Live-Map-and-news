@@ -259,6 +259,7 @@ function cleanDescription(value: string): string {
   let cleaned = value;
   for (let i = 0; i < 2; i++) cleaned = decodeHtml(cleaned);
   return cleaned
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/<[^>]*>/g, " ")
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(/\s+/g, " ")
