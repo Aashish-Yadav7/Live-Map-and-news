@@ -8,4 +8,5 @@ export interface NewsItem {
   category: 'accident' | 'research'
   publishedAt: string
   summary?: string
+  imageUrl?: string
 }

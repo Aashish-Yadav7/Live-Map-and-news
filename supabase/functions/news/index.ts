@@ -16,6 +16,7 @@ interface NewsItem {
   category: "accident" | "research";
   publishedAt: string;
   summary: string;
+  imageUrl?: string;
 }
 
 // ── Geo-coding tables ─────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ function categorize(text: string): "accident" | "research" {
 
 function processArticle(
   title: string, description: string, url: string,
-  sourceName: string, publishedAt: string
+  sourceName: string, publishedAt: string, imageUrl?: string
 ): NewsItem | null {
   if (!title || !url || !url.startsWith("http")) return null;
   if (url.includes("google.com/search") || url.includes("bing.com/search")) return null;
@@ -261,6 +262,7 @@ function processArticle(
     category: categorize(`${title} ${description}`),
     publishedAt: publishedAt || new Date().toISOString(),
     summary: description ? description.slice(0, 300) : "",
+    imageUrl: imageUrl || undefined,
   };
 }
 
@@ -316,7 +318,16 @@ function parseRSS(xml: string, sourceName: string): NewsItem[] {
     const desc = block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim() ||
                  block.match(/<summary>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/i)?.[1]?.trim() || "";
     const cleanDesc = desc.replace(/<[^>]+>/g, "").trim();
-    const item = processArticle(title, cleanDesc, link, sourceName, pubDate);
+    // Extract image URL from enclosure, media:content, media:thumbnail, or description HTML
+    let imageUrl: string | undefined;
+    const enclosure = block.match(/<enclosure[^>]+type="image\/[^"]+"[^>]+url="([^"]+)"/i)?.[1]
+      || block.match(/<enclosure[^>]+url="([^"]+)"[^>]+type="image\/[^"]+"/i)?.[1];
+    const mediaContent = block.match(/<media:content[^>]+url="([^"]+)"[^>]+medium="image"/i)?.[1]
+      || block.match(/<media:content[^>]+medium="image"[^>]+url="([^"]+)"/i)?.[1];
+    const mediaThumb = block.match(/<media:thumbnail[^>]+url="([^"]+)"/i)?.[1];
+    const descImg = desc.match(/<img[^>]+src="([^"]+)"/i)?.[1];
+    imageUrl = enclosure || mediaContent || mediaThumb || descImg || undefined;
+    const item = processArticle(title, cleanDesc, link, sourceName, pubDate, imageUrl);
     if (item) items.push(item);
   }
 
@@ -402,7 +413,7 @@ async function fetchGNews(apiKey: string): Promise<NewsItem[]> {
       for (const a of (data.articles || [])) {
         if (seen.has(a.url)) continue;
         seen.add(a.url);
-        const item = processArticle(a.title, a.description || "", a.url, a.source?.name || "GNews", a.publishedAt);
+        const item = processArticle(a.title, a.description || "", a.url, a.source?.name || "GNews", a.publishedAt, a.image);
         if (item) results.push(item);
       }
     } catch { /* skip */ }

@@ -191,6 +191,9 @@ export default function App() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-neutral-200 leading-snug line-clamp-2">{item.title}</p>
+                  {item.summary && (
+                    <p className="text-xs text-neutral-400 mt-0.5 line-clamp-2">{item.summary}</p>
+                  )}
                   <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
                     {item.source}
                     <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 text-neutral-600" />
@@ -229,6 +232,14 @@ export default function App() {
               </button>
             </div>
             <div className="p-5 space-y-4">
+              {selected.imageUrl && (
+                <img
+                  src={selected.imageUrl}
+                  alt={selected.title}
+                  className="w-full h-48 object-cover rounded-lg border border-neutral-800"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              )}
               <h2 className="text-lg font-semibold leading-tight">{selected.title}</h2>
               <div className="flex items-center gap-3 text-xs text-neutral-400">
                 <span className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-300">{selected.source}</span>
