@@ -251,6 +251,7 @@ function decodeHtml(value: string): string {
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
+    .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&");
 }
 
@@ -264,10 +265,64 @@ function cleanDescription(value: string): string {
     .trim();
 }
 
+function isTitleRepeat(title: string, summary: string): boolean {
+  const t = title.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  const s = summary.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  if (!s) return true;
+  if (s === t) return true;
+  if (s.startsWith(t) && s.length < t.length + 40) return true;
+  if (t.startsWith(s) && t.length < s.length + 40) return true;
+  return false;
+}
+
 function validImageUrl(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const decoded = decodeHtml(value).trim();
   return /^https?:\/\//i.test(decoded) ? decoded : undefined;
+}
+
+async function enrichArticle(item: NewsItem): Promise<NewsItem> {
+  if (item.summary && !isTitleRepeat(item.title, item.summary) && item.imageUrl) {
+    return item;
+  }
+  try {
+    const res = await fetch(item.url, {
+      headers: { "User-Agent": "WorldNewsGlobe/1.0" },
+      signal: AbortSignal.timeout(6000),
+      redirect: "follow",
+    });
+    if (!res.ok) return item;
+    const html = await res.text();
+    const meta = (name: string): string | undefined => {
+      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=['"]${name}['"][^>]+content=['"]([^'"]+)['"]`, "i"))
+        || html.match(new RegExp(`<meta[^>]+content=['"]([^'"]+)['"][^>]+(?:property|name)=['"]${name}['"]`, "i"));
+      return m?.[1]?.trim() || undefined;
+    };
+    if (!item.imageUrl) {
+      item.imageUrl = validImageUrl(meta("og:image") || meta("twitter:image"));
+    }
+    if (!item.summary || isTitleRepeat(item.title, item.summary)) {
+      const desc = cleanDescription(meta("og:description") || meta("twitter:description") || meta("description") || "");
+      if (desc && !isTitleRepeat(item.title, desc)) {
+        item.summary = desc.slice(0, 500);
+      }
+    }
+  } catch { /* skip */ }
+  return item;
+}
+
+async function enrichItems(items: NewsItem[], limit: number): Promise<NewsItem[]> {
+  const need = items.filter(i => !i.summary || isTitleRepeat(i.title, i.summary) || !i.imageUrl);
+  const rest = items.filter(i => !(need.includes(i)));
+  const batch: NewsItem[] = [];
+  for (let i = 0; i < Math.min(need.length, limit); i += 8) {
+    const slice = need.slice(i, Math.min(i + 8, limit));
+    const enriched = await Promise.all(slice.map(enrichArticle));
+    batch.push(...enriched);
+  }
+  const enrichedMap = new Map(batch.map(i => [i.url, i]));
+  return [...rest, ...items.filter(i => enrichedMap.has(i.url)).map(i => enrichedMap.get(i.url)!)]
+    .sort((a, b) => items.indexOf(a) - items.indexOf(b));
 }
 
 function processArticle(
@@ -554,8 +609,15 @@ Deno.serve(async (req: Request) => {
       [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
     }
 
+    const sorted = filtered.sort((a, b) => {
+      const aBad = (!a.summary || isTitleRepeat(a.title, a.summary)) ? 1 : 0;
+      const bBad = (!b.summary || isTitleRepeat(b.title, b.summary)) ? 1 : 0;
+      return aBad - bBad;
+    });
+    const enriched = await enrichItems(sorted, 40);
+
     return new Response(
-      JSON.stringify({ items: filtered.slice(0, 200), count: filtered.length, country: countryFilter || null }),
+      JSON.stringify({ items: enriched.slice(0, 200), count: enriched.length, country: countryFilter || null }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
