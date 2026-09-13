@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { NewsItem } from '../types'
 
-const NEWS_ENDPOINT = import.meta.env.VITE_SUPABASE_URL
-  ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/news`
-  : 'https://ehieqmpmkyouoyjebuqa.supabase.co/functions/v1/news'
-
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
-  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoaWVxbXBta3lvdW95amVidXFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4MDg5NTksImV4cCI6MjEwMDM4NDk1OX0.w3X-40as6pVsq9-wI3xoMjx0RKmE_jsmEQ6575gdJSU'
 
-// Only keep items with a real, valid article URL (not a search link)
+const NEWS_ENDPOINT = SUPABASE_URL
+  ? `${SUPABASE_URL}/functions/v1/news`
+  : null
+
 function isRealArticle(item: NewsItem): boolean {
   if (!item.url || !item.url.startsWith('http')) return false
   if (item.url.includes('google.com/search')) return false
@@ -21,6 +20,11 @@ export function useNews(country: string = '') {
   const [error, setError] = useState<string | null>(null)
 
   const fetchNews = useCallback(async (countryQuery: string) => {
+    if (!NEWS_ENDPOINT || !ANON_KEY) {
+      setError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.')
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       const endpoint = countryQuery
@@ -50,6 +54,11 @@ export function useNews(country: string = '') {
   useEffect(() => {
     let cancelled = false
     const run = async () => {
+      if (!NEWS_ENDPOINT || !ANON_KEY) {
+        setError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.')
+        setLoading(false)
+        return
+      }
       try {
         setLoading(true)
         const endpoint = country

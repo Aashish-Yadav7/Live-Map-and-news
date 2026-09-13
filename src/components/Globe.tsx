@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import type { NewsItem } from '../types'
+import { CATEGORY_META } from '../types'
 
 interface GlobeProps {
   newsItems: NewsItem[]
@@ -65,10 +66,10 @@ export default function Globe({ newsItems, onNewsHover, onNewsClick }: GlobeProp
     const dotGeo = new THREE.SphereGeometry(0.012, 8, 8)
 
     newsItems.forEach(item => {
-      const isAcc = item.category === 'accident'
+      const color = CATEGORY_META[item.category]?.hex ?? 0x94a3b8
 
       const dotMat = new THREE.MeshBasicMaterial({
-        color: isAcc ? 0xef4444 : 0x3b82f6,
+        color,
         depthTest: true,
         depthWrite: true,
         toneMapped: false,

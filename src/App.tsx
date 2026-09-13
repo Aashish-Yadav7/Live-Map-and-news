@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react'
-import { AlertTriangle, Microscope, Loader2, X, ExternalLink, Search, MapPin } from 'lucide-react'
+import { Loader2, X, ExternalLink, Search, MapPin } from 'lucide-react'
 import Globe from './components/Globe'
 import { useNews } from './hooks/useNews'
-import type { NewsItem } from './types'
+import { CATEGORY_META, CATEGORY_ORDER } from './types'
+import type { NewsItem, NewsCategory } from './types'
 
 export default function App() {
   const [countryInput, setCountryInput] = useState('')
@@ -29,8 +30,10 @@ export default function App() {
     setSelected(null)
   }, [])
 
-  const accidentCount = items.filter(i => i.category === 'accident').length
-  const researchCount = items.filter(i => i.category === 'research').length
+  const categoryCounts = items.reduce((acc, item) => {
+    acc[item.category] = (acc[item.category] || 0) + 1
+    return acc
+  }, {} as Record<NewsCategory, number>)
 
   const googleSearch = (item: NewsItem) => {
     window.open(`https://www.google.com/search?q=${encodeURIComponent(item.title)}`, '_blank', 'noopener,noreferrer')
@@ -49,17 +52,25 @@ export default function App() {
           />
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 sm:gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-              <span className="text-neutral-300 hidden sm:inline">Accidents & Events</span>
-              <span className="text-neutral-500 text-xs">({accidentCount})</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-              <span className="text-neutral-300 hidden sm:inline">Research & Tech</span>
-              <span className="text-neutral-500 text-xs">({researchCount})</span>
-            </div>
+          <div className="hidden md:flex items-center gap-3 text-sm flex-wrap">
+            {CATEGORY_ORDER.map(cat => {
+              const meta = CATEGORY_META[cat]
+              const count = categoryCounts[cat] || 0
+              if (count === 0) return null
+              return (
+                <div key={cat} className="flex items-center gap-1.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: meta.css, boxShadow: `0 0 6px ${meta.css}80` }}
+                  />
+                  <span className="text-neutral-300 text-xs">{meta.label}</span>
+                  <span className="text-neutral-500 text-xs">({count})</span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex md:hidden items-center gap-2 text-xs">
+            <span className="text-neutral-400">{items.length} items</span>
           </div>
           {loading && (
             <div className="flex items-center gap-2 text-xs text-neutral-400">
@@ -109,12 +120,10 @@ export default function App() {
         )}
       </div>
 
-      {/* Main content
-          Mobile  : globe fixed at top (55vh), news scrolls below
-          Desktop : globe left, news sidebar right */}
+      {/* Main content */}
       <main className="flex-1 flex flex-col sm:flex-row relative overflow-hidden min-h-0">
 
-        {/* Globe — fixed upper region on mobile, left pane on desktop */}
+        {/* Globe */}
         <div className="relative overflow-hidden flex-shrink-0
                         h-[52vh] sm:h-full sm:flex-1">
           <Globe
@@ -131,14 +140,13 @@ export default function App() {
               }}
             >
               <div className="flex items-start gap-2">
-                {hovered.category === 'accident' ? (
-                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
-                ) : (
-                  <Microscope className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                )}
+                <span
+                  className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0"
+                  style={{ backgroundColor: CATEGORY_META[hovered.category].css }}
+                />
                 <div>
                   <p className="text-xs text-neutral-400 mb-1">
-                    {hovered.category === 'accident' ? 'Accident / Event' : 'Research / Tech'}
+                    {CATEGORY_META[hovered.category].label}
                   </p>
                   <p className="text-sm text-white leading-snug line-clamp-3">{hovered.title}</p>
                   <p className="text-xs text-neutral-500 mt-1">{hovered.source}</p>
@@ -147,21 +155,15 @@ export default function App() {
               <p className="text-xs text-blue-400 mt-2">Tap to open article</p>
             </div>
           )}
-          {error && error.includes('GNEWS_API_KEY') && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-amber-950/80 border border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-200 flex items-center gap-2 max-w-md">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>News API key not set. Add GNEWS_API_KEY in Supabase secrets to load real news.</span>
-            </div>
-          )}
           {error && !error.includes('GNEWS_API_KEY') && (
-            <div className="absolute top-4 right-4 bg-red-950/80 border border-red-800 rounded-lg px-4 py-2 text-sm text-red-300 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              <span>Failed to load news: {error}</span>
+            <div className="absolute top-4 right-4 bg-red-950/80 border border-red-800 rounded-lg px-4 py-2 text-sm text-red-300 flex items-center gap-2 max-w-sm">
+              <span className="flex-shrink-0">!</span>
+              <span>{error}</span>
             </div>
           )}
         </div>
 
-        {/* News panel — scrolls below globe on mobile, right sidebar on desktop */}
+        {/* News panel */}
         <aside className="flex flex-col flex-shrink-0 overflow-hidden
                           flex-1 sm:flex-none sm:w-80
                           border-t sm:border-t-0 sm:border-l border-neutral-800/60
@@ -176,28 +178,34 @@ export default function App() {
                 {error ? 'Could not load news data.' : 'No news items found.'}
               </div>
             )}
-            {items.map((item, idx) => (
-              <button
-                key={idx}
-                className={`w-full text-left px-4 py-3 border-b border-neutral-800/40 hover:bg-neutral-800/40 active:bg-neutral-800/60 transition-colors flex items-start gap-3 ${selected?.url === item.url ? 'bg-neutral-800/50' : ''}`}
-                onClick={() => setSelected(item)}
-              >
-                <div className="mt-1 flex-shrink-0">
-                  {item.category === 'accident' ? (
-                    <span className="block w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" />
-                  ) : (
-                    <span className="block w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-neutral-200 leading-snug line-clamp-2">{item.title}</p>
-                  <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
-                    {item.source}
-                    <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 text-neutral-600" />
-                  </p>
-                </div>
-              </button>
-            ))}
+            {items.map((item, idx) => {
+              const meta = CATEGORY_META[item.category]
+              return (
+                <button
+                  key={idx}
+                  className={`w-full text-left px-4 py-3 border-b border-neutral-800/40 hover:bg-neutral-800/40 active:bg-neutral-800/60 transition-colors flex items-start gap-3 ${selected?.url === item.url ? 'bg-neutral-800/50' : ''}`}
+                  onClick={() => setSelected(item)}
+                >
+                  <div className="mt-1 flex-shrink-0">
+                    <span
+                      className="block w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: meta.css, boxShadow: `0 0 6px ${meta.css}80` }}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-neutral-200 leading-snug line-clamp-2">{item.title}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-xs text-neutral-600">{meta.label}</span>
+                      <span className="text-neutral-700">·</span>
+                      <p className="text-xs text-neutral-500 flex items-center gap-1">
+                        {item.source}
+                        <ExternalLink className="w-3 h-3 inline-block flex-shrink-0 text-neutral-600" />
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </aside>
       </main>
@@ -212,13 +220,12 @@ export default function App() {
           >
             <div className="sticky top-0 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800 px-5 py-4 flex items-center justify-between z-10">
               <div className="flex items-center gap-2">
-                {selected.category === 'accident' ? (
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
-                ) : (
-                  <Microscope className="w-5 h-5 text-blue-400" />
-                )}
+                <span
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: CATEGORY_META[selected.category].css }}
+                />
                 <span className="text-sm font-medium text-neutral-300">
-                  {selected.category === 'accident' ? 'Accident / Event' : 'Research / Tech'}
+                  {CATEGORY_META[selected.category].label}
                 </span>
               </div>
               <button
@@ -251,7 +258,19 @@ export default function App() {
               </div>
               <div className="text-sm text-neutral-300">
                 <p className="text-neutral-500 mb-1">Location</p>
-                <p>{selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}</p>
+                <div className="flex items-center gap-2">
+                  <span>{selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}</span>
+                  {selected.locationPrecision && (
+                    <span className="px-2 py-0.5 rounded text-xs bg-neutral-800 text-neutral-400">
+                      {selected.locationPrecision}
+                    </span>
+                  )}
+                  {selected.locationConfidence !== undefined && (
+                    <span className="text-xs text-neutral-500">
+                      {Math.round(selected.locationConfidence * 100)}% confidence
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="text-sm text-neutral-300">
                 <p className="text-neutral-500 mb-1">Summary</p>

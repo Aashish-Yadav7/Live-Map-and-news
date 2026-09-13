@@ -6,6 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+type NewsCategory =
+  | "general" | "disaster" | "conflict" | "science"
+  | "technology" | "politics" | "business" | "health" | "environment";
+
+type LocationPrecision = "city" | "country" | "coordinate";
+
 interface NewsItem {
   title: string;
   source: string;
@@ -13,10 +19,12 @@ interface NewsItem {
   lat: number;
   lng: number;
   country: string;
-  category: "accident" | "research";
+  category: NewsCategory;
   publishedAt: string;
   summary: string;
   imageUrl?: string;
+  locationPrecision?: LocationPrecision;
+  locationConfidence?: number;
 }
 
 // ── Geo-coding tables ─────────────────────────────────────────────────────────
@@ -197,17 +205,25 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findLocation(text: string): { lat: number; lng: number; country: string } | null {
+function findLocation(text: string): {
+  lat: number; lng: number; country: string;
+  precision: LocationPrecision; confidence: number;
+} | null {
   const lower = text.toLowerCase();
   for (let i = 0; i < CITIES.length; i++) {
-    if (lower.includes(CITIES[i][0])) {
-      return { lat: CITIES[i][1], lng: CITIES[i][2], country: CITY_COUNTRIES[i] };
+    const cityName = CITIES[i][0];
+    const pattern = new RegExp("\\b" + escapeRegExp(cityName) + "\\b", "i");
+    if (pattern.test(lower)) {
+      return {
+        lat: CITIES[i][1], lng: CITIES[i][2], country: CITY_COUNTRIES[i],
+        precision: "city", confidence: 0.92,
+      };
     }
   }
   for (const [name, lat, lng] of COUNTRIES) {
     const pattern = new RegExp("\\b" + escapeRegExp(name) + "\\b", "i");
     if (pattern.test(lower)) {
-      return { lat, lng, country: name };
+      return { lat, lng, country: name, precision: "country", confidence: 0.75 };
     }
   }
   return null;
@@ -231,16 +247,31 @@ function normalizeCountry(input: string): string {
   return lower;
 }
 
-function categorize(text: string): "accident" | "research" {
+const CATEGORY_KEYWORDS: Record<NewsCategory, string[]> = {
+  disaster: ["accident","crash","collision","fire","explosion","flood","earthquake","storm","hurricane","eruption","blast","derail","collapse","landslide","tsunami","tornado","wildfire","dead","killed","injured","wounded","disaster","emergency","evacuat","shooting","bomb","drought","famine","chemical","nuclear","fallout","crisis","mudslide","avalanche","cyclone","typhoon","magnitude","aftershock","quake","volcano","heatwave","blizzard","sinkhole"],
+  conflict: ["attack","conflict","war","battle","airstrike","strike","siege","hostage","violence","protest","riot","military","troops","soldier","rebel","insurgent","terror","missile","ceasefire","invasion","occupation","frontline","artillery","drone strike"],
+  science: ["research","study","science","quantum","satellite","launch","discovery","breakthrough","laboratory","university","scientists","telescope","probe","experiment","archaeolog","fossil","exoplanet","mars","moon","iss","spacex","nasa","particle","dementia","alzheimer","genome","stem cell","immunotherapy","cancer study","neuroscience","physics","chemistry","biology","astronomy","cosmology"],
+  technology: ["technology"," ai ","artificial intelligence","innovation","robotics","biotech","nanotech","semiconductor","chip","software","startup","app launch","cyber","hack","data breach","encryption","blockchain","crypto","electric vehicle","self-driving","autonomous","drone","quantum computing","llm","machine learning"],
+  politics: ["election","parliament","congress","senate","president","prime minister","minister","lawmaker","legislation","bill passed","policy","reform","treaty","summit","diplomatic","sanction","impeach","vote","campaign","poll","govern","political party","opposition"],
+  business: ["market","stock","shares","economy","economic","gdp","inflation","trade","tariff","merger","acquisition","earnings","revenue","profit","bank","investor","startup funding","ipo","billion","trillion","deal","opec","federal reserve","interest rate"],
+  health: ["medical","treatment","vaccine","clinical trial","hospital","surgery","therapy","disease","outbreak","epidemic","pandemic","virus","infection","who warns","health","mental health","addiction","overdose","fda","drug approval","life expectancy"],
+  environment: ["climate","renewable","carbon","solar","fusion","emission","deforest","pollution","plastic","ocean","coral","biodiversity","endangered","species","wildlife","conservation","recycling","green energy","wind","hydro","drought","heatwave","wildfire","flood"],
+  general: [],
+};
+
+function categorize(text: string): NewsCategory {
   const lower = text.toLowerCase();
-  let acc = 0, res = 0;
-  for (const w of ["accident","crash","collision","fire","explosion","flood","earthquake","storm","hurricane","eruption","attack","blast","derail","collapse","landslide","tsunami","tornado","wildfire","dead","killed","injured","wounded","disaster","emergency","evacuat","shooting","bomb","conflict","war","battle","airstrike","strike","siege","hostage","drought","famine","chemical","nuclear","fallout","crisis","violence","protest","riot","mudslide","avalanche","cyclone","typhoon","magnitude","aftershock"]) {
-    if (lower.includes(w)) acc++;
+  const scores: Record<string, number> = {};
+  for (const [cat, words] of Object.entries(CATEGORY_KEYWORDS)) {
+    let count = 0;
+    for (const w of words) {
+      if (lower.includes(w)) count++;
+    }
+    if (count > 0) scores[cat] = count;
   }
-  for (const w of ["research","study","science","technology"," ai ","artificial intelligence","quantum","space","satellite","launch","discovery","innovation","breakthrough","laboratory","university","scientists","medical","treatment","vaccine","genome","robotics","solar","fusion","biotech","nanotech","climate","renewable","carbon","neuroscience","telescope","probe","experiment","trial","archaeolog","fossil","exoplanet","mars","moon","iss","spacex","nasa","cura","gene","stem cell","immunotherapy","particle","cancer study","dementia","alzheimer"]) {
-    if (lower.includes(w)) res++;
-  }
-  return acc >= res ? "accident" : "research";
+  const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) return "general";
+  return entries[0][0] as NewsCategory;
 }
 
 function decodeHtml(value: string): string {
@@ -326,6 +357,53 @@ async function enrichItems(items: NewsItem[], limit: number): Promise<NewsItem[]
     .sort((a, b) => items.indexOf(a) - items.indexOf(b));
 }
 
+const SOURCE_FALLBACK: Record<string, { lat: number; lng: number; country: string }> = {
+  "bbc": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "bbc science": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "bbc tech": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "bbc business": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "bbc politics": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "bbc health": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "al jazeera": { lat: 25.30, lng: 51.53, country: "qatar" },
+  "npr world": { lat: 38.90, lng: -77.04, country: "united states" },
+  "npr national": { lat: 38.90, lng: -77.04, country: "united states" },
+  "npr science": { lat: 38.90, lng: -77.04, country: "united states" },
+  "npr tech": { lat: 38.90, lng: -77.04, country: "united states" },
+  "npr top stories": { lat: 38.90, lng: -77.04, country: "united states" },
+  "npr health": { lat: 38.90, lng: -77.04, country: "united states" },
+  "dw": { lat: 50.11, lng: 8.68, country: "germany" },
+  "reuters": { lat: 40.71, lng: -74.01, country: "united states" },
+  "the guardian": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "the guardian science": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "the guardian tech": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "the guardian business": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "the guardian environment": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "the guardian politics": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "new york times": { lat: 40.71, lng: -74.01, country: "united states" },
+  "washington post": { lat: 38.90, lng: -77.04, country: "united states" },
+  "ap news": { lat: 40.71, lng: -74.01, country: "united states" },
+  "smh": { lat: -33.87, lng: 151.21, country: "australia" },
+  "japan today": { lat: 35.68, lng: 139.69, country: "japan" },
+  "times of india": { lat: 19.08, lng: 72.88, country: "india" },
+  "jerusalem post": { lat: 31.78, lng: 35.22, country: "israel" },
+  "le monde": { lat: 48.85, lng: 2.35, country: "france" },
+  "south china morning post": { lat: 22.32, lng: 114.17, country: "china" },
+  "korea times": { lat: 37.57, lng: 126.98, country: "south korea" },
+  "cna": { lat: 1.35, lng: 103.82, country: "singapore" },
+  "breitbart": { lat: 40.71, lng: -74.01, country: "united states" },
+  "the hindu": { lat: 13.08, lng: 80.27, country: "india" },
+  "dawn": { lat: 24.86, lng: 67.01, country: "pakistan" },
+  "bangkok post": { lat: 13.76, lng: 100.50, country: "thailand" },
+  "news.com.au": { lat: -33.87, lng: 151.21, country: "australia" },
+  "ctv news": { lat: 43.65, lng: -79.38, country: "canada" },
+  "politico": { lat: 38.90, lng: -77.04, country: "united states" },
+  "the verge": { lat: 40.71, lng: -74.01, country: "united states" },
+  "techcrunch": { lat: 37.77, lng: -122.42, country: "united states" },
+  "wired": { lat: 37.77, lng: -122.42, country: "united states" },
+  "nature": { lat: 51.51, lng: -0.13, country: "united kingdom" },
+  "scientific american": { lat: 40.71, lng: -74.01, country: "united states" },
+};
+
 function processArticle(
   title: string, description: string, url: string,
   sourceName: string, publishedAt: string, imageUrl?: string
@@ -335,18 +413,31 @@ function processArticle(
   const summary = cleanDescription(description);
   const geoText = `${title} ${summary} ${sourceName}`;
   const loc = findLocation(geoText);
-  if (!loc) return null;
+  let lat: number, lng: number, country: string;
+  let precision: LocationPrecision;
+  let confidence: number;
+  if (loc) {
+    lat = loc.lat; lng = loc.lng; country = loc.country;
+    precision = loc.precision; confidence = loc.confidence;
+  } else {
+    const fallback = SOURCE_FALLBACK[sourceName.toLowerCase()];
+    if (!fallback) return null;
+    lat = fallback.lat; lng = fallback.lng; country = fallback.country;
+    precision = "country"; confidence = 0.35;
+  }
   return {
     title: decodeHtml(title).trim(),
     source: sourceName,
     url,
-    lat: loc.lat,
-    lng: loc.lng,
-    country: loc.country,
+    lat,
+    lng,
+    country,
     category: categorize(`${title} ${summary}`),
     publishedAt: publishedAt || new Date().toISOString(),
     summary,
     imageUrl: validImageUrl(imageUrl),
+    locationPrecision: precision,
+    locationConfidence: confidence,
   };
 }
 
@@ -362,21 +453,47 @@ const RSS_FEEDS: RSSFeed[] = [
   { url: "https://feeds.bbci.co.uk/news/world/rss.xml", source: "BBC" },
   { url: "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml", source: "BBC Science" },
   { url: "https://feeds.bbci.co.uk/news/technology/rss.xml", source: "BBC Tech" },
+  { url: "https://feeds.bbci.co.uk/news/business/rss.xml", source: "BBC Business" },
+  { url: "https://feeds.bbci.co.uk/news/politics/rss.xml", source: "BBC Politics" },
+  { url: "https://feeds.bbci.co.uk/news/health/rss.xml", source: "BBC Health" },
   { url: "https://www.aljazeera.com/xml/rss/all.xml", source: "Al Jazeera" },
   { url: "https://feeds.npr.org/1004/rss.xml", source: "NPR World" },
   { url: "https://feeds.npr.org/1006/rss.xml", source: "NPR National" },
   { url: "https://feeds.npr.org/1007/rss.xml", source: "NPR Science" },
   { url: "https://feeds.npr.org/1009/rss.xml", source: "NPR Tech" },
+  { url: "https://feeds.npr.org/1001/rss.xml", source: "NPR Top Stories" },
+  { url: "https://feeds.npr.org/1128/rss.xml", source: "NPR Health" },
   { url: "https://rss.dw.com/rdf/rss-en-all", source: "DW" },
   { url: "https://news.google.com/rss/search?q=site:reuters.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "Reuters" },
   { url: "https://www.theguardian.com/world/rss", source: "The Guardian" },
   { url: "https://www.theguardian.com/science/rss", source: "The Guardian Science" },
   { url: "https://www.theguardian.com/technology/rss", source: "The Guardian Tech" },
+  { url: "https://www.theguardian.com/business/rss", source: "The Guardian Business" },
+  { url: "https://www.theguardian.com/environment/rss", source: "The Guardian Environment" },
+  { url: "https://www.theguardian.com/politics/rss", source: "The Guardian Politics" },
   { url: "https://news.google.com/rss/search?q=site:nytimes.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "New York Times" },
+  { url: "https://news.google.com/rss/search?q=site:washingtonpost.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "Washington Post" },
+  { url: "https://news.google.com/rss/search?q=site:apnews.com+when:1d&hl=en-US&gl=US&ceid=US:en", source: "AP News" },
   { url: "https://www.smh.com.au/rss/feed.xml", source: "SMH" },
   { url: "https://japantoday.com/feed", source: "Japan Today" },
   { url: "https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms", source: "Times of India" },
   { url: "https://www.jpost.com/Rss/RssFeedsHeadlines.aspx", source: "Jerusalem Post" },
+  { url: "https://www.lemonde.fr/rss/une.xml", source: "Le Monde" },
+  { url: "https://www.scmp.com/rss/91/feed", source: "South China Morning Post" },
+  { url: "https://www.koreatimes.co.kr/www/rss.xml", source: "Korea Times" },
+  { url: "https://www.channelnewsasia.com/rssfeeds/8395980", source: "CNA" },
+  { url: "https://www.breitbart.com/feed/", source: "Breitbart" },
+  { url: "https://www.thehindu.com/news/national/feeder/default.rss", source: "The Hindu" },
+  { url: "https://www.dawn.com/feed/home", source: "Dawn" },
+  { url: "https://www.bangkokpost.com/rss/data/rss_topstories.xml", source: "Bangkok Post" },
+  { url: "https://www.news.com.au/content-feeds/latest-news-national", source: "News.com.au" },
+  { url: "https://www.ctvnews.ca/rss/ctvnews-ca-top-stories-public-rss-1.822004", source: "CTV News" },
+  { url: "https://www.politico.com/rss/congress.xml", source: "Politico" },
+  { url: "https://www.theverge.com/rss/index.xml", source: "The Verge" },
+  { url: "https://www.techcrunch.com/rss", source: "TechCrunch" },
+  { url: "https://www.wired.com/feed/rss", source: "Wired" },
+  { url: "https://www.nature.com/nature.rss", source: "Nature" },
+  { url: "https://www.scientificamerican.com/rss", source: "Scientific American" },
   { url: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson", source: "USGS Earthquakes" },
 ];
 
@@ -435,9 +552,11 @@ function parseUSGS(json: string): NewsItem[] {
         lat: coords[1],
         lng: coords[0],
         country: "",
-        category: "accident",
+        category: "disaster",
         publishedAt: props.time ? new Date(props.time).toISOString() : new Date().toISOString(),
         summary: `Magnitude ${props.mag} earthquake detected. ${props.place || ""}`,
+        locationPrecision: "coordinate",
+        locationConfidence: 0.99,
       });
     }
   } catch { /* skip */ }
@@ -615,10 +734,10 @@ Deno.serve(async (req: Request) => {
       const bBad = (!b.summary || isTitleRepeat(b.title, b.summary)) ? 1 : 0;
       return aBad - bBad;
     });
-    const enriched = await enrichItems(sorted, 40);
+    const enriched = await enrichItems(sorted, 60);
 
     return new Response(
-      JSON.stringify({ items: enriched.slice(0, 200), count: enriched.length, country: countryFilter || null }),
+      JSON.stringify({ items: enriched.slice(0, 300), count: enriched.length, country: countryFilter || null }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
