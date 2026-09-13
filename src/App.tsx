@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Loader2, X, ExternalLink, Search, MapPin } from 'lucide-react'
+import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown } from 'lucide-react'
 import Globe from './components/Globe'
 import { useNews } from './hooks/useNews'
 import { CATEGORY_META, CATEGORY_ORDER } from './types'
@@ -12,6 +12,7 @@ export default function App() {
   const [hovered, setHovered] = useState<NewsItem | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
   const [selected, setSelected] = useState<NewsItem | null>(null)
+  const [globeExpanded, setGlobeExpanded] = useState(false)
 
   const handleHover = useCallback((item: NewsItem | null, x: number, y: number) => {
     setHovered(item)
@@ -124,13 +125,25 @@ export default function App() {
       <main className="flex-1 flex flex-col sm:flex-row relative overflow-hidden min-h-0">
 
         {/* Globe */}
-        <div className="relative overflow-hidden flex-shrink-0
-                        h-[52vh] sm:h-full sm:flex-1">
+        <div
+          className={`relative overflow-hidden flex-shrink-0 transition-all duration-300 ease-in-out sm:h-full sm:flex-1 ${globeExpanded ? 'h-[40vh]' : 'h-[28vh]'}`}
+        >
           <Globe
             newsItems={items}
             onNewsHover={handleHover}
             onNewsClick={setSelected}
           />
+          {/* Mobile expand/collapse toggle */}
+          <button
+            onClick={() => setGlobeExpanded(!globeExpanded)}
+            className="sm:hidden absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm border border-neutral-700 text-xs text-neutral-300 hover:bg-black/80 transition-colors"
+          >
+            {globeExpanded ? (
+              <><ChevronDown className="w-3.5 h-3.5" /> Less map</>
+            ) : (
+              <><ChevronUp className="w-3.5 h-3.5" /> More map</>
+            )}
+          </button>
           {hovered && !selected && (
             <div
               className="fixed z-50 pointer-events-none max-w-xs bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-xl p-3 shadow-2xl animate-fade-in"
@@ -167,7 +180,8 @@ export default function App() {
         <aside className="flex flex-col flex-shrink-0 overflow-hidden
                           flex-1 sm:flex-none sm:w-80
                           border-t sm:border-t-0 sm:border-l border-neutral-800/60
-                          bg-neutral-950/80 min-h-0">
+                          bg-neutral-950/80 min-h-0
+                          transition-all duration-300 ease-in-out">
           <div className="px-4 py-3 border-b border-neutral-800/60 flex items-center justify-between flex-shrink-0">
             <h2 className="text-sm font-semibold text-neutral-200">Latest Reports</h2>
             <span className="text-xs text-neutral-500">{items.length} items</span>
