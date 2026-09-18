@@ -142,6 +142,9 @@ npm run build
 - **English only** — all RSS feeds are English-language sources.
 
 ## Roadmap
+The idea was structured by me every piece of architecture it has it was not just a prompt given task it took days for me to build the systems connect those systems tell the AI how the UI should work. Roughly 12 sheets were used to create the UI on plain sheets by me to tell AI how the UI and also the UX should work.
+
+Not just that many underlying tech and system were also developed and were researched and found from different sources and were plugged into this project
 
 - [ ] WebSocket live updates (push new articles without polling)
 - [ ] Time slider / historical replay
