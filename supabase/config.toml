@@ -1,2 +1,14 @@
 [functions.news]
 verify_jwt = false
+
+[functions.satellites]
+verify_jwt = false
+
+[functions.earthquakes]
+verify_jwt = false
+
+[functions.flights]
+verify_jwt = false
+
+[functions.radio]
+verify_jwt = false
