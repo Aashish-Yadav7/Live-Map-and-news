@@ -1,14 +1,15 @@
 import { useState, useCallback, useMemo } from 'react'
-import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Satellite, Activity, Plane, Radio, Volume2 } from 'lucide-react'
+import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Satellite, Activity, Plane, Radio, Volume2, Globe as GlobeIcon, Orbit, Sparkles } from 'lucide-react'
 import Globe from './components/Globe'
+import type { ViewMode } from './components/Globe'
 import LayerPanel from './components/LayerPanel'
 import { useNews } from './hooks/useNews'
 import { useSatellites } from './hooks/useSatellites'
 import { useEarthquakes } from './hooks/useEarthquakes'
 import { useFlights } from './hooks/useFlights'
 import { useRadio } from './hooks/useRadio'
-import { CATEGORY_META, CATEGORY_ORDER, LAYER_META, SAT_CLASS_META } from './types'
-import type { NewsItem, NewsCategory, LayerId } from './types'
+import { CATEGORY_META, LAYER_META, SAT_CLASS_META } from './types'
+import type { LayerId } from './types'
 import type { GlobeHoverData } from './components/Globe'
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
   const [globeExpanded, setGlobeExpanded] = useState(false)
   const [playingStation, setPlayingStation] = useState<string | null>(null)
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('earth')
 
   const toggleLayer = useCallback((id: LayerId) => {
     setActiveLayers(prev => {
@@ -75,11 +77,6 @@ export default function App() {
       } catch { /* ignore */ }
     }
   }, [])
-
-  const categoryCounts = newsItems.reduce((acc, item) => {
-    acc[item.category] = (acc[item.category] || 0) + 1
-    return acc
-  }, {} as Record<NewsCategory, number>)
 
   const layerCounts = useMemo(() => ({
     news: newsItems.length,
@@ -172,12 +169,39 @@ export default function App() {
             activeLayers={activeLayers}
             onHover={handleHover}
             onClick={handleClick}
+            onViewChange={setViewMode}
           />
           <LayerPanel
             activeLayers={activeLayers}
             onToggle={toggleLayer}
             counts={layerCounts}
           />
+          {/* View mode breadcrumb */}
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-black/70 backdrop-blur-md border border-neutral-700/60 rounded-xl px-2.5 py-2 shadow-2xl">
+            <button
+              onClick={() => {}}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'earth' ? 'bg-blue-600/30 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'}`}
+            >
+              <GlobeIcon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Earth</span>
+            </button>
+            <span className="text-neutral-700 text-xs">/</span>
+            <button
+              onClick={() => {}}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'solar' ? 'bg-amber-600/30 text-amber-300' : 'text-neutral-500 hover:text-neutral-300'}`}
+            >
+              <Orbit className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Solar</span>
+            </button>
+            <span className="text-neutral-700 text-xs">/</span>
+            <button
+              onClick={() => {}}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'galaxy' ? 'bg-violet-600/30 text-violet-300' : 'text-neutral-500 hover:text-neutral-300'}`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Galaxy</span>
+            </button>
+          </div>
           {/* Mobile expand/collapse toggle */}
           <button
             onClick={() => setGlobeExpanded(!globeExpanded)}
@@ -271,7 +295,7 @@ export default function App() {
                         const audio = new Audio(selected.url!)
                         audio.volume = 0.7
                         audio.play().catch(() => {})
-                        setPlayingStation(selected.url)
+                        setPlayingStation(selected.url ?? null)
                       } catch { /* ignore */ }
                     }}
                     className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 transition-colors rounded-lg text-sm font-medium text-white"

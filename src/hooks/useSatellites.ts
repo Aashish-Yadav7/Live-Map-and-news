@@ -1,23 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import * as satellite from 'satellite.js'
+import { twoline2satrec, propagate as propagateSat, gstime, eciToGeodetic } from '../sat-lib'
 import type { Satellite } from '../types'
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 interface TleRecord {
   name: string
   line1: string
   line2: string
   satClass: string
-}
-
-interface RawSat {
-  id: number
-  name: string
-  satClass: string
-  alt: number
-  velocity: number
 }
 
 function classifySat(name: string): string {
@@ -35,36 +24,6 @@ export function useSatellites(enabled: boolean) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const tleRef = useRef<TleRecord[]>([])
-
-  useEffect(() => {
-    if (!enabled) return
-    let cancelled = false
-
-    const fetchTle = async () => {
-      if (!SUPABASE_URL || !ANON_KEY) return
-      setLoading(true)
-      try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/satellites`, {
-          headers: { Authorization: `Bearer ${ANON_KEY}` },
-        })
-        if (!res.ok) throw new Error(`Failed (${res.status})`)
-        const data = await res.json()
-        if (cancelled) return
-        if (data.error) { setError(data.error); return }
-
-        const raw: RawSat[] = data.items || []
-        // For now we store the raw data; positions will be computed client-side
-        // We need TLE lines for propagation, so we'll fetch the TLE text directly
-        setError(null)
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load satellites')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchTle()
-  }, [enabled])
 
   // Fetch TLE text directly from CelesTrak and propagate positions client-side
   useEffect(() => {
@@ -113,18 +72,18 @@ export function useSatellites(enabled: boolean) {
   useEffect(() => {
     if (!enabled || tleRef.current.length === 0) return
 
-    const propagate = () => {
+    const updatePositions = () => {
       const now = new Date()
-      const gmst = satellite.gstime(now)
+      const gmst = gstime(now)
       const results: Satellite[] = []
 
       for (const rec of tleRef.current) {
         try {
-          const satrec = satellite.twoline2satrec(rec.line1, rec.line2)
-          const pv = satellite.sgp4(satrec, now)
+          const satrec = twoline2satrec(rec.line1, rec.line2)
+          const pv = propagateSat(satrec, now)
           if (!pv || typeof pv === 'boolean') continue
 
-          const geodetic = satellite.eciToGeodetic(pv.position, gmst)
+          const geodetic = eciToGeodetic(pv.position, gmst)
           if (!geodetic) continue
 
           const lat = geodetic.latitude * (180 / Math.PI)
@@ -137,7 +96,7 @@ export function useSatellites(enabled: boolean) {
           )
 
           results.push({
-            id: satrec.satnum,
+            id: parseInt(satrec.satnum, 10) || 0,
             name: rec.name,
             satClass: rec.satClass as Satellite['satClass'],
             lat,
@@ -151,8 +110,8 @@ export function useSatellites(enabled: boolean) {
       setItems(results)
     }
 
-    propagate()
-    const interval = setInterval(propagate, 5000)
+    updatePositions()
+    const interval = setInterval(updatePositions, 5000)
     return () => clearInterval(interval)
   }, [enabled])
 
