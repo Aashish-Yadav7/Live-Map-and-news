@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import * as THREE from 'three'
-import type { NewsItem, Satellite, Earthquake, Flight, RadioStation, LayerId } from '../types'
+import type { NewsItem, Satellite, Earthquake, Flight, RadioStation, LayerId, SeaRoute, FlightPath } from '../types'
 import { CATEGORY_META, SAT_CLASS_META, LAYER_META } from '../types'
 
 export type ViewMode = 'earth' | 'solar' | 'galaxy'
@@ -21,7 +21,10 @@ interface GlobeProps {
   earthquakes: Earthquake[]
   flights: Flight[]
   radioStations: RadioStation[]
+  seaRoutes: SeaRoute[]
+  flightPaths: FlightPath[]
   activeLayers: Set<LayerId>
+  godEyeMode: boolean
   onHover?: (data: GlobeHoverData | null, x: number, y: number) => void
   onClick?: (data: GlobeHoverData) => void
   onViewChange?: (mode: ViewMode) => void
@@ -35,6 +38,22 @@ function latLngToVec3(lat: number, lng: number, r = 1.0): THREE.Vector3 {
     r * Math.cos(phi),
     r * Math.sin(phi) * Math.sin(theta)
   )
+}
+
+// Create a great-circle arc between two lat/lng points on a sphere
+function greatCircleArc(from: THREE.Vector3, to: THREE.Vector3, segments = 64): THREE.Vector3[] {
+  const points: THREE.Vector3[] = []
+  const angle = from.angleTo(to)
+  const arcHeight = 1 + Math.sin(angle * 0.5) * 0.15
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments
+    const slerped = new THREE.Vector3().lerpVectors(from, to, t)
+    slerped.normalize()
+    const lift = 1 + Math.sin(t * Math.PI) * (arcHeight - 1)
+    slerped.multiplyScalar(lift)
+    points.push(slerped)
+  }
+  return points
 }
 
 const ATMOS_VERT = `
@@ -61,21 +80,34 @@ interface MarkerEntry {
   hoverData: GlobeHoverData
 }
 
-// Planet data: [name, radius, distance from sun, color, orbital speed]
-const PLANETS: [string, number, number, number, number][] = [
-  ['Mercury', 0.08, 2.5, 0x8c7853, 0.004],
-  ['Venus', 0.14, 3.6, 0xe39e54, 0.0015],
-  ['Earth', 0.15, 5.0, 0x2b5f8a, 0.001],
-  ['Mars', 0.11, 7.0, 0xc1440e, 0.0008],
-  ['Jupiter', 0.45, 11.0, 0xd8a87e, 0.0004],
-  ['Saturn', 0.38, 15.5, 0xead6b8, 0.0003],
-  ['Uranus', 0.24, 20.0, 0x8eceed, 0.0002],
-  ['Neptune', 0.23, 24.0, 0x3d5ef8, 0.00015],
+// Planet data: [name, radius, distance, color, orbitalSpeed, hasRings, tilt]
+interface PlanetData {
+  name: string
+  radius: number
+  distance: number
+  color: number
+  speed: number
+  hasRings: boolean
+  tilt: number
+  texUrl?: string
+}
+
+const PLANETS: PlanetData[] = [
+  { name: 'Mercury', radius: 0.10, distance: 3.0, color: 0x8c7853, speed: 0.0048, hasRings: false, tilt: 0.03 },
+  { name: 'Venus',   radius: 0.16, distance: 4.5, color: 0xe39e54, speed: 0.0020, hasRings: false, tilt: 3.10 },
+  { name: 'Earth',   radius: 0.18, distance: 6.5, color: 0x2b5f8a, speed: 0.0012, hasRings: false, tilt: 0.41,
+    texUrl: 'https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg' },
+  { name: 'Mars',    radius: 0.13, distance: 9.0, color: 0xc1440e, speed: 0.0010, hasRings: false, tilt: 0.44 },
+  { name: 'Jupiter', radius: 0.50, distance: 14.0, color: 0xd8a87e, speed: 0.0005, hasRings: false, tilt: 0.05 },
+  { name: 'Saturn',  radius: 0.42, distance: 19.0, color: 0xead6b8, speed: 0.0003, hasRings: true,  tilt: 0.47 },
+  { name: 'Uranus',  radius: 0.28, distance: 24.0, color: 0x8eceed, speed: 0.0002, hasRings: true,  tilt: 1.71 },
+  { name: 'Neptune', radius: 0.27, distance: 29.0, color: 0x3d5ef8, speed: 0.00015, hasRings: false, tilt: 0.49 },
 ]
 
 export default function Globe({
   newsItems, satellites, earthquakes, flights, radioStations,
-  activeLayers, onHover, onClick, onViewChange,
+  seaRoutes, flightPaths, activeLayers, godEyeMode,
+  onHover, onClick, onViewChange,
 }: GlobeProps) {
   const mountRef = useRef<HTMLDivElement>(null)
   const onHoverRef = useRef(onHover)
@@ -83,24 +115,30 @@ export default function Globe({
   const onViewChangeRef = useRef(onViewChange)
   const markersRef = useRef<MarkerEntry[]>([])
   const markersContainerRef = useRef<THREE.Group | null>(null)
+  const arcsContainerRef = useRef<THREE.Group | null>(null)
   const activeLayersRef = useRef(activeLayers)
+  const godEyeRef = useRef(godEyeMode)
   const [viewMode, setViewMode] = useState<ViewMode>('earth')
 
   useEffect(() => { onHoverRef.current = onHover }, [onHover])
   useEffect(() => { onClickRef.current = onClick }, [onClick])
   useEffect(() => { onViewChangeRef.current = onViewChange }, [onViewChange])
   useEffect(() => { activeLayersRef.current = activeLayers }, [activeLayers])
+  useEffect(() => { godEyeRef.current = godEyeMode }, [godEyeMode])
 
-  // Rebuild markers whenever any layer data changes
+  // Rebuild markers + arcs whenever data or layers change
   useEffect(() => {
     const container = markersContainerRef.current
-    if (!container) return
+    const arcContainer = arcsContainerRef.current
+    if (!container || !arcContainer) return
 
     container.clear()
+    arcContainer.clear()
     markersRef.current = []
 
     const dotGeo = new THREE.SphereGeometry(0.012, 8, 8)
 
+    // ── News markers ────────────────────────────────────────────────────────
     if (activeLayers.has('news')) {
       newsItems.forEach(item => {
         const color = CATEGORY_META[item.category]?.hex ?? 0x94a3b8
@@ -117,6 +155,7 @@ export default function Globe({
       })
     }
 
+    // ── Satellite markers ───────────────────────────────────────────────────
     if (activeLayers.has('satellites')) {
       const satGeo = new THREE.SphereGeometry(0.006, 6, 6)
       satellites.forEach(sat => {
@@ -135,6 +174,7 @@ export default function Globe({
       })
     }
 
+    // ── Earthquake markers ──────────────────────────────────────────────────
     if (activeLayers.has('earthquakes')) {
       const eqGeo = new THREE.SphereGeometry(0.014, 8, 8)
       earthquakes.forEach(eq => {
@@ -154,6 +194,7 @@ export default function Globe({
       })
     }
 
+    // ── Flight markers ──────────────────────────────────────────────────────
     if (activeLayers.has('flights')) {
       const flightGeo = new THREE.ConeGeometry(0.008, 0.02, 4)
       flights.forEach(flight => {
@@ -173,6 +214,7 @@ export default function Globe({
       })
     }
 
+    // ── Radio markers ───────────────────────────────────────────────────────
     if (activeLayers.has('radio')) {
       const radioGeo = new THREE.SphereGeometry(0.01, 8, 8)
       radioStations.forEach(station => {
@@ -188,7 +230,53 @@ export default function Globe({
         })
       })
     }
-  }, [newsItems, satellites, earthquakes, flights, radioStations, activeLayers])
+
+    // ── Flight path arcs ────────────────────────────────────────────────────
+    if (activeLayers.has('flightPaths')) {
+      flightPaths.forEach(fp => {
+        const from = latLngToVec3(fp.fromLat, fp.fromLng, 1.0)
+        const to = latLngToVec3(fp.toLat, fp.toLng, 1.0)
+        const points = greatCircleArc(from, to, 48)
+        const geo = new THREE.BufferGeometry().setFromPoints(points)
+        const color = fp.military ? 0xfb923c : 0xf59e0b
+        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false })
+        const line = new THREE.Line(geo, mat)
+        arcContainer.add(line)
+
+        // Endpoint dots
+        const endGeo = new THREE.SphereGeometry(0.008, 6, 6)
+        const endMat = new THREE.MeshBasicMaterial({ color, toneMapped: false })
+        const fromDot = new THREE.Mesh(endGeo, endMat)
+        fromDot.position.copy(from)
+        const toDot = new THREE.Mesh(endGeo, endMat)
+        toDot.position.copy(to)
+        arcContainer.add(fromDot, toDot)
+      })
+    }
+
+    // ── Sea route arcs ──────────────────────────────────────────────────────
+    if (activeLayers.has('seaRoutes')) {
+      seaRoutes.forEach(route => {
+        const from = latLngToVec3(route.fromLat, route.fromLng, 1.0)
+        const to = latLngToVec3(route.toLat, route.toLng, 1.0)
+        const points = greatCircleArc(from, to, 64)
+        const geo = new THREE.BufferGeometry().setFromPoints(points)
+        const opacity = route.traffic === 'high' ? 0.7 : route.traffic === 'medium' ? 0.45 : 0.25
+        const mat = new THREE.LineBasicMaterial({ color: 0x06b6d4, transparent: true, opacity, depthWrite: false, toneMapped: false })
+        const line = new THREE.Line(geo, mat)
+        arcContainer.add(line)
+
+        // Port dots
+        const portGeo = new THREE.SphereGeometry(0.01, 8, 8)
+        const portMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, toneMapped: false })
+        const fromDot = new THREE.Mesh(portGeo, portMat)
+        fromDot.position.copy(from)
+        const toDot = new THREE.Mesh(portGeo, portMat)
+        toDot.position.copy(to)
+        arcContainer.add(fromDot, toDot)
+      })
+    }
+  }, [newsItems, satellites, earthquakes, flights, radioStations, seaRoutes, flightPaths, activeLayers])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -285,26 +373,30 @@ export default function Globe({
     globe.add(markersContainer)
     markersContainerRef.current = markersContainer
 
+    const arcsContainer = new THREE.Group()
+    globe.add(arcsContainer)
+    arcsContainerRef.current = arcsContainer
+
     // ── Solar system group ───────────────────────────────────────────────────
     const solarGroup = new THREE.Group()
     solarGroup.visible = false
     scene.add(solarGroup)
 
     // The Sun
-    const sunGeo = new THREE.SphereGeometry(0.6, 32, 32)
+    const sunGeo = new THREE.SphereGeometry(0.8, 32, 32)
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd33, toneMapped: false })
     const sunMesh = new THREE.Mesh(sunGeo, sunMat)
     solarGroup.add(sunMesh)
 
-    // Sun glow
+    // Sun corona glow
     const sunGlowMat = new THREE.ShaderMaterial({
       vertexShader: ATMOS_VERT,
       fragmentShader: `
         varying vec3 vNormal;
         void main() {
           float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-          float intensity = pow(rim, 2.0) * 1.5;
-          gl_FragColor = vec4(1.0, 0.8, 0.2, 1.0) * intensity;
+          float intensity = pow(rim, 2.0) * 1.8;
+          gl_FragColor = vec4(1.0, 0.7, 0.15, 1.0) * intensity;
         }
       `,
       side: THREE.FrontSide,
@@ -312,22 +404,23 @@ export default function Globe({
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     })
-    solarGroup.add(new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), sunGlowMat))
+    solarGroup.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 32, 32), sunGlowMat))
 
-    // Point light at sun position for solar view
-    const solarLight = new THREE.PointLight(0xfff5e0, 2, 200)
+    // Point light at sun position
+    const solarLight = new THREE.PointLight(0xfff5e0, 3, 300)
     solarGroup.add(solarLight)
+    solarGroup.add(new THREE.AmbientLight(0x222244, 0.5))
 
-    const planetMeshes: { mesh: THREE.Mesh; orbitAngle: number; speed: number; name: string }[] = []
+    const planetMeshes: { mesh: THREE.Mesh; orbitAngle: number; speed: number; name: string; distance: number; moon?: THREE.Mesh; moonAngle?: number }[] = []
 
-    PLANETS.forEach(([name, radius, distance, color, speed]) => {
+    PLANETS.forEach(p => {
       // Orbit ring
-      const orbitGeo = new THREE.RingGeometry(distance - 0.02, distance + 0.02, 128)
+      const orbitGeo = new THREE.RingGeometry(p.distance - 0.03, p.distance + 0.03, 128)
       const orbitMat = new THREE.MeshBasicMaterial({
-        color: 0x444466,
+        color: 0x3a3a5a,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.35,
         depthWrite: false,
       })
       const orbit = new THREE.Mesh(orbitGeo, orbitMat)
@@ -335,124 +428,128 @@ export default function Globe({
       solarGroup.add(orbit)
 
       // Planet
-      const pGeo = new THREE.SphereGeometry(radius, 32, 32)
-      const pMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.1 })
+      const pGeo = new THREE.SphereGeometry(p.radius, 32, 32)
+      const pMat = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.8, metalness: 0.1 })
       const pMesh = new THREE.Mesh(pGeo, pMat)
+      pMesh.rotation.z = p.tilt
       const startAngle = Math.random() * Math.PI * 2
-      pMesh.position.set(Math.cos(startAngle) * distance, 0, Math.sin(startAngle) * distance)
+      pMesh.position.set(Math.cos(startAngle) * p.distance, 0, Math.sin(startAngle) * p.distance)
       solarGroup.add(pMesh)
 
-      // Saturn rings
-      if (name === 'Saturn') {
-        const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.2, 64)
+      // Load Earth texture onto the Earth planet in solar view
+      if (p.texUrl) {
+        loader.load(p.texUrl, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace
+          pMat.map = tex
+          pMat.color.set(0xffffff)
+          pMat.needsUpdate = true
+        })
+      }
+
+      // Saturn / Uranus rings
+      if (p.hasRings) {
+        const ringInner = p.radius * 1.4
+        const ringOuter = p.name === 'Saturn' ? p.radius * 2.4 : p.radius * 1.8
+        const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 64)
         const ringMat = new THREE.MeshBasicMaterial({
-          color: 0xc4a877,
+          color: p.name === 'Saturn' ? 0xc4a877 : 0x7fdbe6,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.6,
+          opacity: 0.55,
           depthWrite: false,
         })
         const ring = new THREE.Mesh(ringGeo, ringMat)
-        ring.rotation.x = Math.PI / 2.3
+        ring.rotation.x = Math.PI / 2.5
         pMesh.add(ring)
       }
 
-      planetMeshes.push({ mesh: pMesh, orbitAngle: startAngle, speed, name })
+      // Earth's Moon
+      let moon: THREE.Mesh | undefined
+      if (p.name === 'Earth') {
+        const moonGeo = new THREE.SphereGeometry(0.05, 16, 16)
+        const moonMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.9 })
+        moon = new THREE.Mesh(moonGeo, moonMat)
+        solarGroup.add(moon)
+      }
+
+      planetMeshes.push({ mesh: pMesh, orbitAngle: startAngle, speed: p.speed, name: p.name, distance: p.distance, moon, moonAngle: 0 })
     })
 
-    // ── Galaxy background (star field) ────────────────────────────────────────
+    // ── Galaxy background ────────────────────────────────────────────────────
     const galaxyGroup = new THREE.Group()
     galaxyGroup.visible = false
     scene.add(galaxyGroup)
 
-    // Generate a spiral galaxy star field
-    const starCount = 8000
+    // Spiral galaxy star field
+    const starCount = 12000
     const starGeo = new THREE.BufferGeometry()
     const starPositions = new Float32Array(starCount * 3)
     const starColors = new Float32Array(starCount * 3)
-    const starSizes = new Float32Array(starCount)
 
     for (let i = 0; i < starCount; i++) {
       const arm = Math.floor(Math.random() * 4)
       const armAngle = (arm * Math.PI * 2) / 4
       const t = Math.random()
-      const radius = t * 80 + 5
-      const angle = armAngle + t * 4 + (Math.random() - 0.5) * 0.5
-      const spread = (1 - t) * 8
-      const x = Math.cos(angle) * radius + (Math.random() - 0.5) * spread
-      const z = Math.sin(angle) * radius + (Math.random() - 0.5) * spread
-      const y = (Math.random() - 0.5) * spread * 0.3
+      const radius = t * 100 + 8
+      const angle = armAngle + t * 5 + (Math.random() - 0.5) * 0.6
+      const spread = (1 - t) * 12
+      starPositions[i * 3] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread
+      starPositions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.4
+      starPositions[i * 3 + 2] = Math.sin(angle) * radius + (Math.random() - 0.5) * spread
 
-      starPositions[i * 3] = x
-      starPositions[i * 3 + 1] = y
-      starPositions[i * 3 + 2] = z
-
-      // Star color: white-blue near center, cooler at edges
-      const intensity = 0.5 + Math.random() * 0.5
-      if (t < 0.3) {
-        starColors[i * 3] = intensity
-        starColors[i * 3 + 1] = intensity * 0.95
-        starColors[i * 3 + 2] = intensity
-      } else if (t < 0.7) {
-        starColors[i * 3] = intensity * 0.9
-        starColors[i * 3 + 1] = intensity * 0.9
-        starColors[i * 3 + 2] = intensity
+      const intensity = 0.4 + Math.random() * 0.6
+      if (t < 0.25) {
+        starColors[i * 3] = intensity; starColors[i * 3 + 1] = intensity * 0.92; starColors[i * 3 + 2] = intensity * 0.8
+      } else if (t < 0.65) {
+        starColors[i * 3] = intensity * 0.85; starColors[i * 3 + 1] = intensity * 0.88; starColors[i * 3 + 2] = intensity
       } else {
-        starColors[i * 3] = intensity * 0.7
-        starColors[i * 3 + 1] = intensity * 0.8
-        starColors[i * 3 + 2] = intensity
+        starColors[i * 3] = intensity * 0.6; starColors[i * 3 + 1] = intensity * 0.7; starColors[i * 3 + 2] = intensity
       }
-
-      starSizes[i] = Math.random() * 2 + 0.5
     }
 
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
     starGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3))
 
     const starMat = new THREE.PointsMaterial({
-      size: 1.5,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.9,
-      sizeAttenuation: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      size: 1.8, vertexColors: true, transparent: true, opacity: 0.9,
+      sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending,
     })
-    const stars = new THREE.Points(starGeo, starMat)
-    galaxyGroup.add(stars)
+    galaxyGroup.add(new THREE.Points(starGeo, starMat))
 
-    // Distant background stars (all directions)
-    const bgStarCount = 3000
+    // Galactic core glow
+    const coreGeo = new THREE.SphereGeometry(6, 32, 32)
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffeecc, transparent: true, opacity: 0.15, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+    galaxyGroup.add(new THREE.Mesh(coreGeo, coreMat))
+
+    // Distant background stars
+    const bgStarCount = 4000
     const bgStarGeo = new THREE.BufferGeometry()
     const bgStarPos = new Float32Array(bgStarCount * 3)
     for (let i = 0; i < bgStarCount; i++) {
       const theta = Math.random() * Math.PI * 2
       const phi = Math.acos(2 * Math.random() - 1)
-      const r = 200 + Math.random() * 800
+      const r = 300 + Math.random() * 1000
       bgStarPos[i * 3] = r * Math.sin(phi) * Math.cos(theta)
       bgStarPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
       bgStarPos[i * 3 + 2] = r * Math.cos(phi)
     }
     bgStarGeo.setAttribute('position', new THREE.BufferAttribute(bgStarPos, 3))
-    const bgStarMat = new THREE.PointsMaterial({
-      color: 0x888899,
-      size: 1.0,
-      transparent: true,
-      opacity: 0.6,
-      sizeAttenuation: true,
-      depthWrite: false,
-    })
-    scene.add(new THREE.Points(bgStarGeo, bgStarMat))
+    scene.add(new THREE.Points(bgStarGeo, new THREE.PointsMaterial({
+      color: 0x8899aa, size: 1.0, transparent: true, opacity: 0.5, sizeAttenuation: true, depthWrite: false,
+    })))
 
     // ── Navigation state ──────────────────────────────────────────────────────
     let autoRotate = true
     let rotY = THREE.MathUtils.degToRad(-20)
     globe.rotation.y = rotY
 
-    // Camera zoom thresholds for view transitions
-    const EARTH_MAX_Z = 8       // zoom out past this -> solar
-    const SOLAR_MAX_Z = 60      // zoom out past this -> galaxy
-    const GALAXY_MAX_Z = 500
+    // God's eye: camera orbits around the globe continuously
+    let godEyeAngle = 0
+    let godEyeHeight = 0.8
+
+    const EARTH_MAX_Z = 8
+    const SOLAR_MAX_Z = 80
+    const GALAXY_MAX_Z = 600
 
     let currentMode: ViewMode = 'earth'
 
@@ -467,55 +564,94 @@ export default function Globe({
         onViewChangeRef.current?.(newMode)
 
         if (newMode === 'earth') {
-          earthGroup.visible = true
-          solarGroup.visible = false
-          galaxyGroup.visible = false
+          earthGroup.visible = true; solarGroup.visible = false; galaxyGroup.visible = false
           scene.background = new THREE.Color(0x000000)
         } else if (newMode === 'solar') {
-          earthGroup.visible = false
-          solarGroup.visible = true
-          galaxyGroup.visible = false
+          earthGroup.visible = false; solarGroup.visible = true; galaxyGroup.visible = false
           scene.background = new THREE.Color(0x000005)
         } else {
-          earthGroup.visible = false
-          solarGroup.visible = false
-          galaxyGroup.visible = true
+          earthGroup.visible = false; solarGroup.visible = false; galaxyGroup.visible = true
           scene.background = new THREE.Color(0x000000)
         }
       }
     }
 
     const _wp = new THREE.Vector3()
-
     let animId = 0
     const animate = () => {
       animId = requestAnimationFrame(animate)
 
       if (currentMode === 'earth') {
-        if (autoRotate) {
+        // God's eye mode: camera automatically orbits the globe
+        if (godEyeRef.current) {
+          godEyeAngle += 0.003
+          const r = 3.5
+          camera.position.x = Math.cos(godEyeAngle) * r
+          camera.position.z = Math.sin(godEyeAngle) * r
+          camera.position.y = Math.sin(godEyeAngle * 0.5) * godEyeHeight
+          camera.lookAt(0, 0, 0)
+        } else if (autoRotate) {
           rotY += 0.0022
           globe.rotation.y = rotY
         }
+
         markersRef.current.forEach(({ group, layer }) => {
           group.getWorldPosition(_wp)
           group.visible = _wp.z > 0.04 && activeLayersRef.current.has(layer)
         })
+
+        // Arc visibility — only show front-facing arcs
+        if (arcsContainer) {
+          arcsContainer.children.forEach(child => {
+            if (child instanceof THREE.Line) {
+              const mid = new THREE.Vector3()
+              child.geometry.getAttribute('position').getXYZ(Math.floor(child.geometry.getAttribute('position').count / 2), mid)
+              mid.applyMatrix4(child.matrixWorld)
+              child.visible = mid.z > -0.1
+            }
+          })
+        }
       } else if (currentMode === 'solar') {
-        // Animate planet orbits
         planetMeshes.forEach(p => {
           p.orbitAngle += p.speed
-          const data = PLANETS.find(d => d[0] === p.name)!
-          const dist = data[2]
-          p.mesh.position.set(Math.cos(p.orbitAngle) * dist, 0, Math.sin(p.orbitAngle) * dist)
+          p.mesh.position.set(Math.cos(p.orbitAngle) * p.distance, 0, Math.sin(p.orbitAngle) * p.distance)
           p.mesh.rotation.y += 0.005
+
+          // Moon orbit around Earth
+          if (p.moon) {
+            p.moonAngle = (p.moonAngle ?? 0) + 0.02
+            const moonDist = p.distance + 0.5
+            const moonR = 0.5
+            p.moon.position.set(
+              Math.cos(p.orbitAngle) * p.distance + Math.cos(p.moonAngle) * moonR,
+              Math.sin(p.moonAngle) * moonR * 0.3,
+              Math.sin(p.orbitAngle) * p.distance + Math.sin(p.moonAngle) * moonR
+            )
+          }
         })
         sunMesh.rotation.y += 0.001
-        if (autoRotate) {
+        if (autoRotate && !godEyeRef.current) {
           solarGroup.rotation.y += 0.0005
         }
+        if (godEyeRef.current) {
+          godEyeAngle += 0.002
+          const r = 40
+          camera.position.x = Math.cos(godEyeAngle) * r
+          camera.position.z = Math.sin(godEyeAngle) * r
+          camera.position.y = 15
+          camera.lookAt(0, 0, 0)
+        }
       } else if (currentMode === 'galaxy') {
-        if (autoRotate) {
+        if (autoRotate && !godEyeRef.current) {
           galaxyGroup.rotation.y += 0.0003
+        }
+        if (godEyeRef.current) {
+          godEyeAngle += 0.001
+          const r = 150
+          camera.position.x = Math.cos(godEyeAngle) * r
+          camera.position.z = Math.sin(godEyeAngle) * r
+          camera.position.y = 40
+          camera.lookAt(0, 0, 0)
         }
       }
 
@@ -523,7 +659,7 @@ export default function Globe({
     }
     animate()
 
-    // ── Raycasting for markers (earth view only) ───────────────────────────────
+    // ── Raycasting ─────────────────────────────────────────────────────────────
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2()
     let hoveredEntry: MarkerEntry | null = null
@@ -547,6 +683,7 @@ export default function Globe({
     let autoResumeTimer = 0
 
     const onMouseDown = (e: MouseEvent) => {
+      if (godEyeRef.current) return
       dragging = true; hasDragged = false; autoRotate = false
       clearTimeout(autoResumeTimer)
       dragPrev = { x: e.clientX, y: e.clientY }
@@ -579,11 +716,11 @@ export default function Globe({
           mesh.scale.setScalar(id === hit?.id ? 2.2 : (mesh.scale.x > 2 ? 1 : mesh.scale.x))
         })
       }
-      renderer.domElement.style.cursor = hit ? 'pointer' : 'grab'
+      renderer.domElement.style.cursor = hit ? 'pointer' : (godEyeRef.current ? 'default' : 'grab')
     }
     const onMouseUp = () => {
       dragging = false
-      renderer.domElement.style.cursor = hoveredEntry ? 'pointer' : 'grab'
+      renderer.domElement.style.cursor = hoveredEntry ? 'pointer' : (godEyeRef.current ? 'default' : 'grab')
       autoResumeTimer = window.setTimeout(() => { autoRotate = true }, 3000)
     }
     const onClickEv = (e: MouseEvent) => {
@@ -596,15 +733,21 @@ export default function Globe({
       e.preventDefault()
       const maxZ = currentMode === 'galaxy' ? GALAXY_MAX_Z : currentMode === 'solar' ? SOLAR_MAX_Z : EARTH_MAX_Z
       const minZ = currentMode === 'galaxy' ? SOLAR_MAX_Z + 1 : currentMode === 'solar' ? EARTH_MAX_Z + 1 : 1.5
+      if (godEyeRef.current) {
+        godEyeHeight = Math.max(-2, Math.min(3, godEyeHeight + e.deltaY * 0.002))
+        return
+      }
       camera.position.z = Math.max(minZ, Math.min(maxZ, camera.position.z + e.deltaY * 0.01))
       updateViewMode(camera.position.z)
     }
 
     let touchPrev = { x: 0, y: 0 }
     let touchDragged = false
-    let pinchDist0 = 0, pinchZ0 = 0
+    let pinchDist0 = 0
+    let pinchZ0 = 0
 
     const onTouchStart = (e: TouchEvent) => {
+      if (godEyeRef.current) return
       e.preventDefault(); autoRotate = false; clearTimeout(autoResumeTimer)
       if (e.touches.length === 1) {
         touchDragged = false
@@ -616,13 +759,12 @@ export default function Globe({
     }
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault()
-      if (e.touches.length === 1) {
+      if (e.touches.length === 1 && !godEyeRef.current) {
         const dx = e.touches[0].clientX - touchPrev.x
         const dy = e.touches[0].clientY - touchPrev.y
         if (Math.hypot(dx, dy) > 4) touchDragged = true
         if (currentMode === 'earth') {
-          rotY += dx * 0.006
-          globe.rotation.y = rotY
+          rotY += dx * 0.006; globe.rotation.y = rotY
           globe.rotation.x = Math.max(-1.2, Math.min(1.2, globe.rotation.x + dy * 0.006))
         } else if (currentMode === 'solar') {
           solarGroup.rotation.y += dx * 0.006
@@ -683,6 +825,7 @@ export default function Globe({
       renderer.dispose()
       if (mount.contains(el)) mount.removeChild(el)
       markersContainerRef.current = null
+      arcsContainerRef.current = null
     }
   }, [])
 
@@ -691,10 +834,10 @@ export default function Globe({
       <div ref={mountRef} className="w-full h-full touch-none" />
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/40 px-3 py-1 rounded-full bg-black/30 backdrop-blur-sm pointer-events-none whitespace-nowrap">
         {viewMode === 'earth' && (
-          <span className="hidden sm:inline">Drag to rotate · Scroll out to explore the solar system</span>
+          <span className="hidden sm:inline">Drag to rotate · Scroll out to explore the solar system · Click a marker</span>
         )}
         {viewMode === 'solar' && (
-          <span>Solar System · Scroll out to see the galaxy · Scroll in to return to Earth</span>
+          <span>Solar System · Scroll out for the galaxy · Scroll in for Earth</span>
         )}
         {viewMode === 'galaxy' && (
           <span>Milky Way Galaxy · Scroll in to return to the solar system</span>

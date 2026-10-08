@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Satellite, Activity, Plane, Radio, Volume2, Globe as GlobeIcon, Orbit, Sparkles } from 'lucide-react'
+import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Satellite, Activity, Plane, Radio, Volume2, Globe as GlobeIcon, Orbit, Sparkles, Eye, Ship, Route } from 'lucide-react'
 import Globe from './components/Globe'
 import type { ViewMode } from './components/Globe'
 import LayerPanel from './components/LayerPanel'
@@ -7,7 +7,9 @@ import { useNews } from './hooks/useNews'
 import { useSatellites } from './hooks/useSatellites'
 import { useEarthquakes } from './hooks/useEarthquakes'
 import { useFlights } from './hooks/useFlights'
+import { useFlightPaths } from './hooks/useFlightPaths'
 import { useRadio } from './hooks/useRadio'
+import { useSeaRoutes } from './hooks/useSeaRoutes'
 import { CATEGORY_META, LAYER_META, SAT_CLASS_META } from './types'
 import type { LayerId } from './types'
 import type { GlobeHoverData } from './components/Globe'
@@ -23,12 +25,16 @@ export default function App() {
   const satellitesEnabled = activeLayers.has('satellites')
   const earthquakesEnabled = activeLayers.has('earthquakes')
   const flightsEnabled = activeLayers.has('flights')
+  const flightPathsEnabled = activeLayers.has('flightPaths')
+  const seaRoutesEnabled = activeLayers.has('seaRoutes')
   const radioEnabled = activeLayers.has('radio')
 
   const { items: satellites, loading: satLoading, error: satError } = useSatellites(satellitesEnabled)
   const { items: earthquakes, loading: eqLoading, error: eqError } = useEarthquakes(earthquakesEnabled)
   const { items: flights, loading: flightLoading, error: flightError } = useFlights(flightsEnabled)
+  const { items: flightPaths, loading: fpLoading, error: fpError } = useFlightPaths(flightPathsEnabled)
   const { items: radioStations, loading: radioLoading, error: radioError } = useRadio(radioEnabled)
+  const { items: seaRoutes, loading: srLoading, error: srError } = useSeaRoutes(seaRoutesEnabled)
 
   const [hovered, setHovered] = useState<GlobeHoverData | null>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
@@ -37,6 +43,7 @@ export default function App() {
   const [playingStation, setPlayingStation] = useState<string | null>(null)
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('earth')
+  const [godEyeMode, setGodEyeMode] = useState(false)
 
   const toggleLayer = useCallback((id: LayerId) => {
     setActiveLayers(prev => {
@@ -83,14 +90,16 @@ export default function App() {
     satellites: satellites.length,
     earthquakes: earthquakes.length,
     flights: flights.length,
+    flightPaths: flightPaths.length,
+    seaRoutes: seaRoutes.length,
     radio: radioStations.length,
-  }), [newsItems, satellites, earthquakes, flights, radioStations])
+  }), [newsItems, satellites, earthquakes, flights, flightPaths, seaRoutes, radioStations])
 
   const googleSearch = (query: string) => {
     window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer')
   }
 
-  const isLayerLoading = newsLoading || satLoading || eqLoading || flightLoading || radioLoading
+  const isLayerLoading = newsLoading || satLoading || eqLoading || flightLoading || fpLoading || radioLoading || srLoading
 
   return (
     <div className="h-screen w-screen bg-gradient-to-b from-neutral-950 via-black to-neutral-950 text-white flex flex-col overflow-hidden">
@@ -166,7 +175,10 @@ export default function App() {
             earthquakes={earthquakes}
             flights={flights}
             radioStations={radioStations}
+            seaRoutes={seaRoutes}
+            flightPaths={flightPaths}
             activeLayers={activeLayers}
+            godEyeMode={godEyeMode}
             onHover={handleHover}
             onClick={handleClick}
             onViewChange={setViewMode}
@@ -176,31 +188,36 @@ export default function App() {
             onToggle={toggleLayer}
             counts={layerCounts}
           />
-          {/* View mode breadcrumb */}
-          <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-black/70 backdrop-blur-md border border-neutral-700/60 rounded-xl px-2.5 py-2 shadow-2xl">
+          {/* View mode breadcrumb + God's Eye toggle */}
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
             <button
-              onClick={() => {}}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'earth' ? 'bg-blue-600/30 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'}`}
+              onClick={() => setGodEyeMode(!godEyeMode)}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border shadow-2xl transition-all text-xs ${
+                godEyeMode
+                  ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300'
+                  : 'bg-black/70 border-neutral-700/60 text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="God's Eye View — camera automatically orbits the globe"
             >
-              <GlobeIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Earth</span>
+              <Eye className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">God's Eye</span>
             </button>
-            <span className="text-neutral-700 text-xs">/</span>
-            <button
-              onClick={() => {}}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'solar' ? 'bg-amber-600/30 text-amber-300' : 'text-neutral-500 hover:text-neutral-300'}`}
-            >
-              <Orbit className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Solar</span>
-            </button>
-            <span className="text-neutral-700 text-xs">/</span>
-            <button
-              onClick={() => {}}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'galaxy' ? 'bg-violet-600/30 text-violet-300' : 'text-neutral-500 hover:text-neutral-300'}`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Galaxy</span>
-            </button>
+            <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-md border border-neutral-700/60 rounded-xl px-2.5 py-2 shadow-2xl">
+              <span className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'earth' ? 'bg-blue-600/30 text-blue-300' : 'text-neutral-500'}`}>
+                <GlobeIcon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Earth</span>
+              </span>
+              <span className="text-neutral-700 text-xs">/</span>
+              <span className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'solar' ? 'bg-amber-600/30 text-amber-300' : 'text-neutral-500'}`}>
+                <Orbit className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Solar</span>
+              </span>
+              <span className="text-neutral-700 text-xs">/</span>
+              <span className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'galaxy' ? 'bg-violet-600/30 text-violet-300' : 'text-neutral-500'}`}>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Galaxy</span>
+              </span>
+            </div>
           </div>
           {/* Mobile expand/collapse toggle */}
           <button
@@ -241,11 +258,13 @@ export default function App() {
             </div>
           )}
           {/* Error indicators */}
-          {(satError || eqError || flightError || radioError) && (
-            <div className="absolute top-3 right-3 bg-red-950/80 border border-red-800 rounded-lg px-3 py-2 text-xs text-red-300 max-w-xs space-y-1">
+          {(satError || eqError || flightError || fpError || radioError || srError) && (
+            <div className="absolute top-16 right-3 bg-red-950/80 border border-red-800 rounded-lg px-3 py-2 text-xs text-red-300 max-w-xs space-y-1">
               {satError && <div>Satellites: {satError}</div>}
               {eqError && <div>Earthquakes: {eqError}</div>}
               {flightError && <div>Flights: {flightError}</div>}
+              {fpError && <div>Flight paths: {fpError}</div>}
+              {srError && <div>Sea routes: {srError}</div>}
               {radioError && <div>Radio: {radioError}</div>}
             </div>
           )}
@@ -263,7 +282,7 @@ export default function App() {
             </h2>
             {!selected && (
               <span className="text-xs text-neutral-500">
-                {layerCounts.news + layerCounts.satellites + layerCounts.earthquakes + layerCounts.flights + layerCounts.radio} items
+                {layerCounts.news + layerCounts.satellites + layerCounts.earthquakes + layerCounts.flights + layerCounts.flightPaths + layerCounts.seaRoutes + layerCounts.radio} items
               </span>
             )}
           </div>
@@ -426,6 +445,29 @@ export default function App() {
                 </div>
               )}
 
+              {/* Sea routes summary */}
+              {activeLayers.has('seaRoutes') && seaRoutes.length > 0 && (
+                <div className="px-4 py-3 border-b border-neutral-800/40">
+                  <div className="flex items-center gap-2">
+                    <Ship className="w-4 h-4 text-cyan-400" />
+                    <span className="text-sm text-neutral-200">{seaRoutes.length} shipping lanes</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Flight paths summary */}
+              {activeLayers.has('flightPaths') && flightPaths.length > 0 && (
+                <div className="px-4 py-3 border-b border-neutral-800/40">
+                  <div className="flex items-center gap-2">
+                    <Route className="w-4 h-4 text-amber-400" />
+                    <span className="text-sm text-neutral-200">{flightPaths.length} flight routes</span>
+                    <span className="text-xs text-neutral-500">
+                      ({flightPaths.filter(f => f.military).length} military)
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Radio summary */}
               {activeLayers.has('radio') && radioStations.length > 0 && (
                 <div className="px-4 py-3 border-b border-neutral-800/40">
@@ -437,7 +479,7 @@ export default function App() {
               )}
 
               {/* Empty state */}
-              {layerCounts.news + layerCounts.satellites + layerCounts.earthquakes + layerCounts.flights + layerCounts.radio === 0 && !isLayerLoading && (
+              {layerCounts.news + layerCounts.satellites + layerCounts.earthquakes + layerCounts.flights + layerCounts.flightPaths + layerCounts.seaRoutes + layerCounts.radio === 0 && !isLayerLoading && (
                 <div className="p-4 text-sm text-neutral-500 text-center">
                   No layers active. Toggle a layer from the panel on the globe.
                 </div>

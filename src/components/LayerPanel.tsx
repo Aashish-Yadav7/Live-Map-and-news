@@ -1,4 +1,4 @@
-import { Layers, Satellite, Activity, Plane, Radio, Newspaper, X } from 'lucide-react'
+import { Layers, Satellite, Activity, Plane, Radio, Newspaper, X, Route, Ship } from 'lucide-react'
 import type { LayerId } from '../types'
 import { LAYER_META, LAYER_ORDER } from '../types'
 
@@ -13,6 +13,8 @@ const ICONS: Record<string, typeof Layers> = {
   Satellite,
   Activity,
   Plane,
+  Route,
+  Ship,
   Radio,
 }
 

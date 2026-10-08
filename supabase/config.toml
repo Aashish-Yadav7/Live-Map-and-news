@@ -10,5 +10,8 @@ verify_jwt = false
 [functions.flights]
 verify_jwt = false
 
+[functions.flightpaths]
+verify_jwt = false
+
 [functions.radio]
 verify_jwt = false

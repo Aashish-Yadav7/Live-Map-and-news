@@ -45,7 +45,7 @@ export const CATEGORY_ORDER: NewsCategory[] = [
 
 // ── Layer types ──────────────────────────────────────────────────────────────
 
-export type LayerId = 'news' | 'satellites' | 'earthquakes' | 'flights' | 'radio'
+export type LayerId = 'news' | 'satellites' | 'earthquakes' | 'flights' | 'radio' | 'seaRoutes' | 'flightPaths'
 
 export interface LayerMeta {
   id: LayerId
@@ -60,10 +60,12 @@ export const LAYER_META: Record<LayerId, LayerMeta> = {
   satellites:  { id: 'satellites',  label: 'Satellites',  color: '#a78bfa', hex: 0xa78bfa, icon: 'Satellite' },
   earthquakes: { id: 'earthquakes', label: 'Earthquakes', color: '#ef4444', hex: 0xef4444, icon: 'Activity' },
   flights:     { id: 'flights',     label: 'Flights',     color: '#fbbf24', hex: 0xfbbf24, icon: 'Plane' },
+  flightPaths: { id: 'flightPaths', label: 'Flight Paths',color: '#f59e0b', hex: 0xf59e0b, icon: 'Route' },
+  seaRoutes:   { id: 'seaRoutes',   label: 'Sea Routes',  color: '#06b6d4', hex: 0x06b6d4, icon: 'Ship' },
   radio:       { id: 'radio',       label: 'Radio',       color: '#22d3ee', hex: 0x22d3ee, icon: 'Radio' },
 }
 
-export const LAYER_ORDER: LayerId[] = ['news', 'satellites', 'earthquakes', 'flights', 'radio']
+export const LAYER_ORDER: LayerId[] = ['news', 'satellites', 'earthquakes', 'flights', 'flightPaths', 'seaRoutes', 'radio']
 
 // ── Satellite ────────────────────────────────────────────────────────────────
 
@@ -116,7 +118,35 @@ export interface Flight {
   military: boolean
 }
 
-// ── Radio station ───────────────────────────────────────────────────────────
+// ── Sea route ───────────────────────────────────────────────────────────────
+
+export interface SeaRoute {
+  id: string
+  name: string
+  fromName: string
+  toName: string
+  fromLat: number
+  fromLng: number
+  toLat: number
+  toLng: number
+  traffic: 'high' | 'medium' | 'low'
+}
+
+// ── Flight path ──────────────────────────────────────────────────────────────
+
+export interface FlightPath {
+  icao: string
+  callsign: string
+  fromLat: number
+  fromLng: number
+  toLat: number
+  toLng: number
+  fromName: string
+  toName: string
+  military: boolean
+}
+
+// ── Radio station ───────────────────────────────────────────────────────────────
 
 export interface RadioStation {
   id: string
