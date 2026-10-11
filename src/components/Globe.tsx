@@ -25,6 +25,7 @@ interface GlobeProps {
   flightPaths: FlightPath[]
   activeLayers: Set<LayerId>
   godEyeMode: boolean
+  targetView?: ViewMode
   onHover?: (data: GlobeHoverData | null, x: number, y: number) => void
   onClick?: (data: GlobeHoverData) => void
   onViewChange?: (mode: ViewMode) => void
@@ -106,7 +107,7 @@ const PLANETS: PlanetData[] = [
 
 export default function Globe({
   newsItems, satellites, earthquakes, flights, radioStations,
-  seaRoutes, flightPaths, activeLayers, godEyeMode,
+  seaRoutes, flightPaths, activeLayers, godEyeMode, targetView,
   onHover, onClick, onViewChange,
 }: GlobeProps) {
   const mountRef = useRef<HTMLDivElement>(null)
@@ -118,6 +119,7 @@ export default function Globe({
   const arcsContainerRef = useRef<THREE.Group | null>(null)
   const activeLayersRef = useRef(activeLayers)
   const godEyeRef = useRef(godEyeMode)
+  const targetViewRef = useRef(targetView)
   const [viewMode, setViewMode] = useState<ViewMode>('earth')
 
   useEffect(() => { onHoverRef.current = onHover }, [onHover])
@@ -125,6 +127,7 @@ export default function Globe({
   useEffect(() => { onViewChangeRef.current = onViewChange }, [onViewChange])
   useEffect(() => { activeLayersRef.current = activeLayers }, [activeLayers])
   useEffect(() => { godEyeRef.current = godEyeMode }, [godEyeMode])
+  useEffect(() => { targetViewRef.current = targetView }, [targetView])
 
   // Rebuild markers + arcs whenever data or layers change
   useEffect(() => {
@@ -547,17 +550,13 @@ export default function Globe({
     let godEyeAngle = 0
     let godEyeHeight = 0.8
 
-    const EARTH_MAX_Z = 8
-    const SOLAR_MAX_Z = 80
-    const GALAXY_MAX_Z = 600
+    const EARTH_MAX_Z = 6
+    const SOLAR_MAX_Z = 50
+    const GALAXY_MAX_Z = 400
 
     let currentMode: ViewMode = 'earth'
 
-    const updateViewMode = (z: number) => {
-      let newMode: ViewMode = 'earth'
-      if (z > SOLAR_MAX_Z) newMode = 'galaxy'
-      else if (z > EARTH_MAX_Z) newMode = 'solar'
-
+    const setView = (newMode: ViewMode) => {
       if (newMode !== currentMode) {
         currentMode = newMode
         setViewMode(newMode)
@@ -566,13 +565,32 @@ export default function Globe({
         if (newMode === 'earth') {
           earthGroup.visible = true; solarGroup.visible = false; galaxyGroup.visible = false
           scene.background = new THREE.Color(0x000000)
+          if (!godEyeRef.current) camera.position.set(0, 0, 2.8)
         } else if (newMode === 'solar') {
           earthGroup.visible = false; solarGroup.visible = true; galaxyGroup.visible = false
           scene.background = new THREE.Color(0x000005)
+          if (!godEyeRef.current) camera.position.set(0, 0, 30)
         } else {
           earthGroup.visible = false; solarGroup.visible = false; galaxyGroup.visible = true
           scene.background = new THREE.Color(0x000000)
+          if (!godEyeRef.current) camera.position.set(0, 0, 100)
         }
+      }
+    }
+
+    const updateViewMode = (z: number) => {
+      let newMode: ViewMode = 'earth'
+      if (z > SOLAR_MAX_Z) newMode = 'galaxy'
+      else if (z > EARTH_MAX_Z) newMode = 'solar'
+      setView(newMode)
+    }
+
+    let lastTargetView: ViewMode | undefined = undefined
+    const checkTargetView = () => {
+      const tv = targetViewRef.current
+      if (tv && tv !== lastTargetView) {
+        lastTargetView = tv
+        setView(tv)
       }
     }
 
@@ -580,6 +598,7 @@ export default function Globe({
     let animId = 0
     const animate = () => {
       animId = requestAnimationFrame(animate)
+      checkTargetView()
 
       if (currentMode === 'earth') {
         // God's eye mode: camera automatically orbits the globe

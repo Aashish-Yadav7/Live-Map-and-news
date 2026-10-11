@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Satellite, Activity, Plane, Radio, Volume2, Globe as GlobeIcon, Orbit, Sparkles, Eye, Ship, Route } from 'lucide-react'
 import Globe from './components/Globe'
 import type { ViewMode } from './components/Globe'
 import LayerPanel from './components/LayerPanel'
+import GodEyeView from './components/GodEyeView'
 import { useNews } from './hooks/useNews'
 import { useSatellites } from './hooks/useSatellites'
 import { useEarthquakes } from './hooks/useEarthquakes'
@@ -44,6 +45,24 @@ export default function App() {
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('earth')
   const [godEyeMode, setGodEyeMode] = useState(false)
+  const [targetView, setTargetView] = useState<ViewMode | undefined>(undefined)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const handlePlayRadio = useCallback((url: string) => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    if (playingStation === url) { setPlayingStation(null); return }
+    const audio = new Audio(url)
+    audio.volume = 0.7
+    audio.play().catch(() => {})
+    audioRef.current = audio
+    setPlayingStation(url)
+    setAudioEl(audio)
+  }, [playingStation])
+
+  const openGodEye = useCallback(() => {
+    setActiveLayers(new Set(['news', 'satellites', 'earthquakes', 'flights', 'flightPaths', 'seaRoutes', 'radio']))
+    setGodEyeMode(true)
+  }, [])
 
   const toggleLayer = useCallback((id: LayerId) => {
     setActiveLayers(prev => {
@@ -179,6 +198,7 @@ export default function App() {
             flightPaths={flightPaths}
             activeLayers={activeLayers}
             godEyeMode={godEyeMode}
+            targetView={targetView}
             onHover={handleHover}
             onClick={handleClick}
             onViewChange={setViewMode}
@@ -191,32 +211,32 @@ export default function App() {
           {/* View mode breadcrumb + God's Eye toggle */}
           <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
             <button
-              onClick={() => setGodEyeMode(!godEyeMode)}
+              onClick={openGodEye}
               className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border shadow-2xl transition-all text-xs ${
                 godEyeMode
                   ? 'bg-emerald-600/30 border-emerald-500/50 text-emerald-300'
                   : 'bg-black/70 border-neutral-700/60 text-neutral-400 hover:text-neutral-200'
               }`}
-              title="God's Eye View — camera automatically orbits the globe"
+              title="God's Eye View - full surveillance mode"
             >
               <Eye className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">God's Eye</span>
             </button>
             <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-md border border-neutral-700/60 rounded-xl px-2.5 py-2 shadow-2xl">
-              <span className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'earth' ? 'bg-blue-600/30 text-blue-300' : 'text-neutral-500'}`}>
+              <button onClick={() => setTargetView('earth')} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'earth' ? 'bg-blue-600/30 text-blue-300' : 'text-neutral-500 hover:text-neutral-300'}`}>
                 <GlobeIcon className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Earth</span>
-              </span>
+              </button>
               <span className="text-neutral-700 text-xs">/</span>
-              <span className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'solar' ? 'bg-amber-600/30 text-amber-300' : 'text-neutral-500'}`}>
+              <button onClick={() => setTargetView('solar')} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'solar' ? 'bg-amber-600/30 text-amber-300' : 'text-neutral-500 hover:text-neutral-300'}`}>
                 <Orbit className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Solar</span>
-              </span>
+              </button>
               <span className="text-neutral-700 text-xs">/</span>
-              <span className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'galaxy' ? 'bg-violet-600/30 text-violet-300' : 'text-neutral-500'}`}>
+              <button onClick={() => setTargetView('galaxy')} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all ${viewMode === 'galaxy' ? 'bg-violet-600/30 text-violet-300' : 'text-neutral-500 hover:text-neutral-300'}`}>
                 <Sparkles className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Galaxy</span>
-              </span>
+              </button>
             </div>
           </div>
           {/* Mobile expand/collapse toggle */}
@@ -488,6 +508,24 @@ export default function App() {
           )}
         </aside>
       </main>
+
+      {/* God's Eye full-screen surveillance view */}
+      {godEyeMode && (
+        <GodEyeView
+          onClose={() => setGodEyeMode(false)}
+          flights={flights}
+          satellites={satellites}
+          radioStations={radioStations}
+          newsItems={newsItems}
+          earthquakes={earthquakes}
+          seaRoutes={seaRoutes}
+          flightPaths={flightPaths}
+          activeLayers={activeLayers}
+          onToggleLayer={toggleLayer}
+          onPlayRadio={handlePlayRadio}
+          playingUrl={playingStation}
+        />
+      )}
     </div>
   )
 }
