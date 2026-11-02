@@ -19,7 +19,6 @@ interface GlobeProps {
   flights: Flight[]
   radioStations: RadioStation[]
   activeLayers: Set<LayerId>
-  godEyeMode: boolean
   onHover?: (data: GlobeHoverData | null, x: number, y: number) => void
   onClick?: (data: GlobeHoverData) => void
 }
@@ -59,16 +58,14 @@ const atmosphereFragment = `
   }
 `
 
-export default function Globe({ newsItems, earthquakes, flights, radioStations, activeLayers, godEyeMode, onHover, onClick }: GlobeProps) {
+export default function Globe({ newsItems, earthquakes, flights, radioStations, activeLayers, onHover, onClick }: GlobeProps) {
   const mountRef = useRef<HTMLDivElement>(null)
   const activeLayersRef = useRef(activeLayers)
-  const godEyeRef = useRef(godEyeMode)
   const hoverRef = useRef(onHover)
   const clickRef = useRef(onClick)
   const markersRef = useRef<MarkerEntry[]>([])
 
   useEffect(() => { activeLayersRef.current = activeLayers }, [activeLayers])
-  useEffect(() => { godEyeRef.current = godEyeMode }, [godEyeMode])
   useEffect(() => { hoverRef.current = onHover }, [onHover])
   useEffect(() => { clickRef.current = onClick }, [onClick])
 
@@ -169,7 +166,6 @@ export default function Globe({ newsItems, earthquakes, flights, radioStations, 
     }
 
     const onDown = (event: MouseEvent) => {
-      if (godEyeRef.current) return
       dragging = true
       dragged = false
       previous = { x: event.clientX, y: event.clientY }
@@ -191,12 +187,12 @@ export default function Globe({ newsItems, earthquakes, flights, radioStations, 
         hoverRef.current?.(hit?.hoverData ?? null, event.clientX, event.clientY)
         markerEntries.forEach(entry => entry.mesh.scale.setScalar(entry === hit ? 2 : 1))
       }
-      renderer.domElement.style.cursor = hit ? 'pointer' : godEyeRef.current ? 'default' : 'grab'
+      renderer.domElement.style.cursor = hit ? 'pointer' : 'grab'
     }
     const onUp = () => { dragging = false }
     const onClickEvent = (event: MouseEvent) => { if (!dragged) { const hit = raycast(event.clientX, event.clientY); if (hit) clickRef.current?.(hit.hoverData) } }
-    const onTouchStart = (event: TouchEvent) => { if (!godEyeRef.current && event.touches[0]) { previous = { x: event.touches[0].clientX, y: event.touches[0].clientY }; dragging = true; dragged = false } }
-    const onTouchMove = (event: TouchEvent) => { if (!godEyeRef.current && event.touches[0]) { const dx = event.touches[0].clientX - previous.x; if (Math.abs(dx) > 3) dragged = true; rotation += dx * 0.006; earth.rotation.y = rotation; previous = { x: event.touches[0].clientX, y: event.touches[0].clientY } } }
+    const onTouchStart = (event: TouchEvent) => { if (event.touches[0]) { previous = { x: event.touches[0].clientX, y: event.touches[0].clientY }; dragging = true; dragged = false } }
+    const onTouchMove = (event: TouchEvent) => { if (event.touches[0]) { const dx = event.touches[0].clientX - previous.x; if (Math.abs(dx) > 3) dragged = true; rotation += dx * 0.006; earth.rotation.y = rotation; previous = { x: event.touches[0].clientX, y: event.touches[0].clientY } } }
     const onTouchEnd = () => { dragging = false }
 
     renderer.domElement.addEventListener('mousedown', onDown)
@@ -210,13 +206,8 @@ export default function Globe({ newsItems, earthquakes, flights, radioStations, 
     let animationId = 0
     const animate = () => {
       animationId = requestAnimationFrame(animate)
-      if (godEyeRef.current) {
-        godAngle += 0.0025
-        camera.position.set(Math.cos(godAngle) * 3.4, Math.sin(godAngle * 0.5) * 0.7, Math.sin(godAngle) * 3.4)
-        camera.lookAt(0, 0, 0)
-      } else {
-        earth.rotation.y = rotation
-      }
+      godAngle += 0.0012
+      earth.rotation.y = rotation + godAngle
       const worldPosition = new THREE.Vector3()
       markerEntries.forEach(entry => {
         entry.group.getWorldPosition(worldPosition)
@@ -254,7 +245,7 @@ export default function Globe({ newsItems, earthquakes, flights, radioStations, 
     <div className="relative w-full h-full bg-black">
       <div ref={mountRef} className="w-full h-full touch-none" />
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-white/50 px-3 py-1 rounded-full bg-black/40 backdrop-blur-sm pointer-events-none">
-        {godEyeMode ? 'God’s Eye surveillance orbit active' : 'Drag to rotate Earth · click a marker for details'}
+        Drag to rotate Earth · click a marker for details
       </div>
     </div>
   )
