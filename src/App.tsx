@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
-import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Activity, Plane, Radio, Volume2, Globe as GlobeIcon, Eye } from 'lucide-react'
+import { Loader2, X, ExternalLink, Search, MapPin, ChevronUp, ChevronDown, Activity, Plane, Radio, Volume2, Globe as GlobeIcon } from 'lucide-react'
 import Globe from './components/Globe'
 import LayerPanel from './components/LayerPanel'
-import GodEyeView from './components/GodEyeView'
 import { useNews } from './hooks/useNews'
 import { useEarthquakes } from './hooks/useEarthquakes'
 import { useFlights } from './hooks/useFlights'
@@ -23,7 +22,6 @@ export default function App() {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
   const [selected, setSelected] = useState<GlobeHoverData | null>(null)
   const [globeExpanded, setGlobeExpanded] = useState(false)
-  const [godEyeMode, setGodEyeMode] = useState(false)
   const [playingStation, setPlayingStation] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
@@ -88,9 +86,6 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           {isLoading && <span className="flex items-center gap-2 text-xs text-neutral-400"><Loader2 className="w-4 h-4 animate-spin" /> Updating</span>}
-          <button onClick={() => setGodEyeMode(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-700/30 border border-emerald-600/50 text-emerald-300 hover:bg-emerald-700/50 transition-colors text-xs font-medium">
-            <Eye className="w-4 h-4" /> God’s Eye
-          </button>
         </div>
       </header>
 
@@ -108,9 +103,8 @@ export default function App() {
 
       <main className="flex-1 flex flex-col sm:flex-row relative overflow-hidden min-h-0">
         <div className={`relative overflow-hidden flex-shrink-0 transition-all sm:h-full sm:flex-1 ${globeExpanded ? 'h-[40vh]' : 'h-[30vh]'}`}>
-          <Globe newsItems={newsItems} earthquakes={earthquakes} flights={flights} radioStations={radioStations} activeLayers={activeLayers} godEyeMode={godEyeMode} onHover={(data, x, y) => { setHovered(data); setTooltipPos({ x, y }) }} onClick={handleClick} />
+          <Globe newsItems={newsItems} earthquakes={earthquakes} flights={flights} radioStations={radioStations} activeLayers={activeLayers} onHover={(data, x, y) => { setHovered(data); setTooltipPos({ x, y }) }} onClick={handleClick} />
           <LayerPanel activeLayers={activeLayers} onToggle={toggleLayer} counts={counts} />
-          <button onClick={() => setGodEyeMode(true)} className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-500/50 bg-emerald-700/30 text-emerald-300 shadow-2xl text-xs"><Eye className="w-3.5 h-3.5" /> God’s Eye</button>
           <button onClick={() => setGlobeExpanded(!globeExpanded)} className="sm:hidden absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-3 py-1.5 rounded-full bg-black/70 border border-neutral-700 text-xs text-neutral-300">
             {globeExpanded ? <><ChevronDown className="w-3.5 h-3.5" /> Less map</> : <><ChevronUp className="w-3.5 h-3.5" /> More map</>}
           </button>
@@ -124,7 +118,6 @@ export default function App() {
         </aside>
       </main>
 
-      {godEyeMode && <GodEyeView onClose={() => setGodEyeMode(false)} flights={flights} radioStations={radioStations} newsItems={newsItems} earthquakes={earthquakes} activeLayers={activeLayers} onToggleLayer={toggleLayer} onPlayRadio={playRadio} playingUrl={playingStation} />}
     </div>
   )
 }
